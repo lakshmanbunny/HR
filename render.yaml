@@ -3,15 +3,17 @@ services:
   - type: web
     name: ai-recruit-backend
     env: python
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
     envVars:
       - key: DATABASE_URL
-        sync: false # Set in Render Dashboard
+        sync: false
       - key: GOOGLE_API_KEY
-        sync: false # Set in Render Dashboard
+        sync: false
       - key: GITHUB_TOKEN
-        sync: false # Set in Render Dashboard
+        sync: false
       - key: LIVEKIT_API_KEY
         sync: false
       - key: LIVEKIT_API_SECRET
@@ -25,12 +27,14 @@ services:
       - key: LANGCHAIN_PROJECT
         value: recruitment-poc
 
-  # Frontend React (Vite) static site
-  - type: web
+  # Frontend React (Vite) Static Site
+  - type: static
     name: ai-recruit-frontend
-    env: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishDir: frontend/dist
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishDir: dist
+    plan: free
     envVars:
       - key: VITE_API_URL
-        value: https://ai-recruit-backend.onrender.com/api # Replace with your actual backend URL after first deploy
+        value: https://ai-recruit-backend.onrender.com/api
