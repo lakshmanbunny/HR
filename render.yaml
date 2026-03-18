@@ -3,6 +3,7 @@ services:
   - type: web
     name: ai-recruit-backend
     env: python
+    plan: free # Explicitly set to free tier
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -16,8 +17,9 @@ services:
 
   # Frontend React (Vite) Static Site
   - type: web
-    name: ai-recruit-frontend
     runtime: static
+    name: ai-recruit-frontend
+    # Static sites on Render are free by default, but let's be safe
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
