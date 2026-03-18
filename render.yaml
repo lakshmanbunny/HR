@@ -14,23 +14,11 @@ services:
         sync: false
       - key: GITHUB_TOKEN
         sync: false
-      - key: LIVEKIT_API_KEY
-        sync: false
-      - key: LIVEKIT_API_SECRET
-        sync: false
-      - key: LIVEKIT_URL
-        sync: false
-      - key: LANGCHAIN_API_KEY
-        sync: false
-      - key: LANGCHAIN_TRACING_V2
-        value: true
-      - key: LANGCHAIN_PROJECT
-        value: recruitment-poc
 
   # Frontend React (Vite) Static Site
-  - type: static
+  - type: web
     name: ai-recruit-frontend
-    env: node
+    env: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishDir: dist
