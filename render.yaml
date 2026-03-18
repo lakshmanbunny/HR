@@ -6,7 +6,6 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    plan: free
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -18,11 +17,10 @@ services:
   # Frontend React (Vite) Static Site
   - type: web
     name: ai-recruit-frontend
-    env: static
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishDir: dist
-    plan: free
+    staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
         value: https://ai-recruit-backend.onrender.com/api
