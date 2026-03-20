@@ -13,6 +13,7 @@ import Stats from './pages/Results/Stats';
 import ComingSoon from './pages/Shared/ComingSoon';
 import InterviewRoom from './pages/InterviewRoom';
 import Landing from './pages/Landing/Landing';
+import ChatWidget from './components/Chatbot/ChatWidget';
 import './index.css';
 
 // Protected Route Component
@@ -132,6 +133,7 @@ const AppContent = () => {
           }
         />
       </Routes>
+      <ChatWidget />
     </Router>
   );
 };

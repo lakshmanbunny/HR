@@ -50,9 +50,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api.chatbot_routes import router as chatbot_router
+
 # Include API routes
 app.include_router(router, prefix=settings.API_V1_STR)
 app.include_router(interview_router, prefix=f"{settings.API_V1_STR}/interview")
+app.include_router(chatbot_router, prefix=f"{settings.API_V1_STR}/chatbot")
 
 @app.get("/")
 async def root():
