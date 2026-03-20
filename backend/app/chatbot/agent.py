@@ -20,7 +20,7 @@ db_connector = NeonPostgresConnector()
 # We need an LLM. Since it's Gemini, we use ChatGoogleGenerativeAI.
 # We'll use a reliable model for reasoning and coding (gemini-1.5-pro or flash)
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-2.5-flash",
     google_api_key=settings.GOOGLE_API_KEY,
     temperature=0
 )
@@ -95,7 +95,7 @@ Here are the results of that query:
 
 Formulate a friendly, concise, and helpful natural language response to the user based ONLY on the provided results. Do not mention the SQL query itself unless relevant. Format neatly.
 """
-        response = llm.invoke([SystemMessage(content=system_prompt)])
+        response = llm.invoke([HumanMessage(content=system_prompt)])
         final_answer = response.content
 
     # Because we use `add_messages`, we only need to return the new messages
@@ -146,4 +146,7 @@ def ask_chatbot(question: str, history: list = None):
     result = chatbot_agent.invoke(inputs)
     
     # The final message in 'messages' is the AI's latest response
-    return result["messages"][-1].content
+    return {
+        "reply": result["messages"][-1].content,
+        "source_data": result.get("query_results", "")
+    }

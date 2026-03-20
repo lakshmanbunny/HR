@@ -48,10 +48,16 @@ class NeonPostgresConnector(BaseDatabaseConnector):
                     SELECT table_name 
                     FROM information_schema.tables 
                     WHERE table_schema = 'public'
+                    AND table_name IN ('sql', 'ba_sql', 'sql_ba', 'sql_dm', 'dm', 'pm', 'apm', 'qc', 'cf')
                 """)
                 tables = conn.execute(tables_query).fetchall()
                 
-                schema_info = []
+                schema_info = [
+                    "--- [DB] POSTGRES DATA-TRANSFORMATION HINTS ---\n"
+                    "1. Dates in columns like 'resource_onboarded_date_if_selected_' may contain strings like 'Offer Drop' or '... - 12-May-25'.\n"
+                    "2. ALWAYS use a regex filter like `~ '^\\d{4}-\\d{2}-\\d{2}'` OR search for specific sub-strings BEFORE casting to timestamp.\n"
+                    "3. For analytics, use `NULLIF(column, '')` or `NULLIF(column, 'Offer Drop')` when performing math.\n\n"
+                ]
                 for (table_name,) in tables:
                     columns_query = text("""
                         SELECT column_name, data_type 
@@ -61,7 +67,16 @@ class NeonPostgresConnector(BaseDatabaseConnector):
                     columns = conn.execute(columns_query, {"table_name": table_name}).fetchall()
                     
                     cols_str = ", ".join([f"{col[0]} ({col[1]})" for col in columns])
-                    schema_info.append(f"Table: {table_name}\nColumns: {cols_str}\n")
+                    
+                    try:
+                        # Pull 10 rows for better variety visibility
+                        sample_query = text(f'SELECT * FROM "{table_name}" LIMIT 10')
+                        sample_df = pd.read_sql_query(sample_query, conn)
+                        sample_data = sample_df.to_csv(index=False).strip()
+                    except Exception:
+                        sample_data = "No sample data available."
+                        
+                    schema_info.append(f"Table: {table_name}\nColumns: {cols_str}\nSample Data:\n{sample_data}\n")
                 
                 return "\n".join(schema_info)
         except Exception as e:
@@ -73,16 +88,20 @@ class NeonPostgresConnector(BaseDatabaseConnector):
         """
         try:
             # We explicitly prevent destructive operations for safety
-            lower_query = query.lower()
-            if any(forbidden in lower_query for forbidden in ['insert', 'update', 'delete', 'drop', 'truncate', 'alter']):
+            import re
+            # Remove all string literals ('...') and ("...") to prevent false positives like '%offer drop%'
+            clean_query = re.sub(r"'.*?'", "", query, flags=re.DOTALL)
+            clean_query = re.sub(r'".*?"', "", clean_query, flags=re.DOTALL)
+            lower_query = clean_query.lower()
+            if re.search(r'\b(insert|update|delete|drop|truncate|alter)\b', lower_query):
                 return "Error: Only SELECT queries are allowed."
                 
             with self.engine.connect() as conn:
-                df = pd.read_sql_query(query, conn)
+                df = pd.read_sql_query(text(query), conn)
                 if df.empty:
                     return "Query executed successfully, but returned 0 results."
-                # Return the results as a markdown table or limited string
+                # Return the results as a CSV string
                 # We limit the rows to prevent overwhelming the LLM context size
-                return df.head(50).to_markdown(index=False)
+                return df.head(50).to_csv(index=False)
         except Exception as e:
             return f"Query Error: {str(e)}"

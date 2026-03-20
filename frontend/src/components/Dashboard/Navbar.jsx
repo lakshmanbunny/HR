@@ -62,7 +62,7 @@ const Navbar = () => {
                         )}
                     </div>
                     <span className="text-[11px] font-bold text-primary-dark uppercase tracking-wider">
-                        {healthStatus === 'running' ? 'Live System' : 'Connecting...'}
+                        {healthStatus === 'running' ? 'Live System' : `Connecting (${healthStatus})...`}
                     </span>
                 </div>
 

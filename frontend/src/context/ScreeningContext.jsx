@@ -41,10 +41,12 @@ export const ScreeningProvider = ({ children }) => {
       clearTimeout(timeoutId);
 
       const data = await response.json();
+      console.log('Health check success:', data);
       setHealthStatus(data.status);
     } catch (err) {
-      console.error('Health check failed', err);
-      setHealthStatus('error');
+      console.error('Health check failed:', err);
+      // Keep track of the actual error to help debugging
+      setHealthStatus(`error: ${err.message || 'unknown'}`);
     }
   };
 

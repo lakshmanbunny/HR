@@ -18,6 +18,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    source_data: Optional[str] = None
 
 @router.post("/ask", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
@@ -31,9 +32,12 @@ async def chat_with_agent(request: ChatRequest):
         history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
         
         # Invoke the LangGraph agent
-        reply = ask_chatbot(request.message, history=history_dicts)
+        reply_dict = ask_chatbot(request.message, history=history_dicts)
         
-        return ChatResponse(reply=reply)
+        return ChatResponse(
+            reply=reply_dict["reply"],
+            source_data=reply_dict["source_data"]
+        )
         
     except Exception as e:
         logger.error(f"Chatbot error: {str(e)}")

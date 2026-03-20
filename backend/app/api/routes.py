@@ -13,6 +13,7 @@ router = APIRouter()
 
 @router.get("/health")
 async def health_check():
+    print("====== 🟩 FRONTEND CONNECTED: Health check ping received! ======")
     return {"status": "running"}
 
 class ScreeningRequest(BaseModel):
