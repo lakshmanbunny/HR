@@ -4,7 +4,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langchain_google_genai import ChatGoogleGenerativeAI
-from app.db.connectors import NeonPostgresConnector
+from app.db.connectors import ProductionSqlConnector
 from app.core.config import settings
 
 # 1. Define the State
@@ -15,7 +15,7 @@ class AgentState(TypedDict):
     query_results: str
 
 # Initialize our components
-db_connector = NeonPostgresConnector()
+db_connector = ProductionSqlConnector()
 
 # We need an LLM. Since it's Gemini, we use ChatGoogleGenerativeAI.
 # We'll use a reliable model for reasoning and coding (gemini-1.5-pro or flash)
@@ -36,14 +36,14 @@ def node_understand_and_write_sql(state: AgentState) -> AgentState:
     
     system_prompt = f"""
 You are a highly capable AI assistant that answers questions based on a SQL database.
-Given the following database schema, your job is to write a PostgreSQL SELECT query to answer the user's question.
+Given the following database schema, your job is to write a {db_connector.dialect} SELECT query to answer the user's question.
 
 SCHEMA:
 {schema}
 
 RULES:
 1. Return ONLY the raw SQL query. Do not wrap it in ```sql ``` markdown blocks or include any other text.
-2. The query must be a valid PostgreSQL SELECT statement.
+2. The query must be a valid {db_connector.dialect} SELECT statement.
 3. If the question cannot be answered using the available schema, return the exact string: "CANNOT_ANSWER".
 """
     

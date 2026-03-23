@@ -25,9 +25,9 @@ class BaseDatabaseConnector(ABC):
         pass
 
 
-class NeonPostgresConnector(BaseDatabaseConnector):
+class ProductionSqlConnector(BaseDatabaseConnector):
     """
-    Implementation for connecting to the Neon PostgreSQL database.
+    Implementation for connecting to the Production SQL database (PostgreSQL or MySQL).
     """
     def __init__(self):
         # Ensure we are using the synchronous driver for Pandas/SQLAlchemy standard usage
@@ -35,6 +35,7 @@ class NeonPostgresConnector(BaseDatabaseConnector):
         if db_url and db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
         self.engine = create_engine(db_url)
+        self.dialect = self.engine.dialect.name # 'postgresql' or 'mysql'
 
     def get_schema(self) -> str:
         """
@@ -43,34 +44,70 @@ class NeonPostgresConnector(BaseDatabaseConnector):
         """
         try:
             with self.engine.connect() as conn:
-                # Get all tables in the public schema
-                tables_query = text("""
-                    SELECT table_name 
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'public'
-                    AND table_name IN ('sql', 'ba_sql', 'sql_ba', 'sql_dm', 'dm', 'pm', 'apm', 'qc', 'cf')
-                """)
-                tables = conn.execute(tables_query).fetchall()
-                
-                schema_info = [
-                    "--- [DB] POSTGRES DATA-TRANSFORMATION HINTS ---\n"
-                    "1. Dates in columns like 'resource_onboarded_date_if_selected_' may contain strings like 'Offer Drop' or '... - 12-May-25'.\n"
-                    "2. ALWAYS use a regex filter like `~ '^\\d{4}-\\d{2}-\\d{2}'` OR search for specific sub-strings BEFORE casting to timestamp.\n"
-                    "3. For analytics, use `NULLIF(column, '')` or `NULLIF(column, 'Offer Drop')` when performing math.\n\n"
-                ]
-                for (table_name,) in tables:
-                    columns_query = text("""
-                        SELECT column_name, data_type 
-                        FROM information_schema.columns 
-                        WHERE table_name = :table_name
+                if self.dialect == 'postgresql':
+                    tables_query = text("""
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'public'
+                        LIMIT 20
                     """)
-                    columns = conn.execute(columns_query, {"table_name": table_name}).fetchall()
+                    params = {}
+                else: # MySQL
+                    # Get database name from the URL
+                    db_name = self.engine.url.database
+                    tables_query = text("""
+                        SELECT table_name 
+                        FROM information_schema.tables 
+                        WHERE table_schema = :db_name
+                        LIMIT 20
+                    """)
+                    params = {"db_name": db_name}
+
+                tables = conn.execute(tables_query, params).fetchall()
+                
+                schema_info = []
+                if self.dialect == 'postgresql':
+                    schema_info.extend([
+                        "--- [DB] POSTGRES DATA-TRANSFORMATION HINTS ---\n",
+                        "1. Dates in columns like 'resource_onboarded_date_if_selected_' may contain strings like 'Offer Drop' or '... - 12-May-25'.\n",
+                        "2. ALWAYS use a regex filter like `~ '^\\d{4}-\\d{2}-\\d{2}'` OR search for specific sub-strings BEFORE casting to timestamp.\n",
+                        "3. For analytics, use `NULLIF(column, '')` or `NULLIF(column, 'Offer Drop')` when performing math.\n\n"
+                    ])
+                else: # MySQL
+                    schema_info.extend([
+                        "--- [DB] MYSQL DATA-TRANSFORMATION HINTS ---\n",
+                        "1. Use `STR_TO_DATE()` for parsing non-standard date strings.\n",
+                        "2. Use `LIMIT` for pagination. MySQL uses specific syntax for some functions.\n",
+                        "3. Use `COALESCE()` or `IFNULL()` for handling nulls.\n\n"
+                    ])
+
+                for (table_name,) in tables:
+                    if self.dialect == 'postgresql':
+                        columns_query = text("""
+                            SELECT column_name, data_type 
+                            FROM information_schema.columns 
+                            WHERE table_name = :table_name
+                        """)
+                    else: # MySQL
+                        columns_query = text("""
+                            SELECT column_name, data_type 
+                            FROM information_schema.columns 
+                            WHERE TABLE_NAME = :table_name AND TABLE_SCHEMA = :db_name
+                        """)
+                    
+                    col_params = {"table_name": table_name}
+                    if self.dialect == 'mysql':
+                        col_params["db_name"] = self.engine.url.database
+
+                    columns = conn.execute(columns_query, col_params).fetchall()
                     
                     cols_str = ", ".join([f"{col[0]} ({col[1]})" for col in columns])
                     
                     try:
                         # Pull 10 rows for better variety visibility
-                        sample_query = text(f'SELECT * FROM "{table_name}" LIMIT 10')
+                        # In MySQL we use backticks or no quotes for tables usually
+                        quote_char = '"' if self.dialect == 'postgresql' else '`'
+                        sample_query = text(f'SELECT * FROM {quote_char}{table_name}{quote_char} LIMIT 10')
                         sample_df = pd.read_sql_query(sample_query, conn)
                         sample_data = sample_df.to_csv(index=False).strip()
                     except Exception:
