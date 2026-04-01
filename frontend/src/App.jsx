@@ -10,6 +10,7 @@ import Results from './pages/Results/Results';
 import ApprovedCandidates from './pages/Results/ApprovedCandidates';
 import GithubTop10 from './pages/Results/GithubTop10';
 import Stats from './pages/Results/Stats';
+import SourcedResults from './pages/Results/SourcedResults';
 import ComingSoon from './pages/Shared/ComingSoon';
 import InterviewRoom from './pages/InterviewRoom';
 import Landing from './pages/Landing/Landing';
@@ -123,7 +124,8 @@ const AppContent = () => {
                   } />
                   <Route path="/approved-candidates" element={<ApprovedCandidates />} />
                    <Route path="/github-top10" element={<GithubTop10 />} />
-                   <Route path="/stats" element={<Stats />} />
+                  <Route path="/stats" element={<Stats />} />
+                  <Route path="/sourced-candidates" element={<SourcedResults />} />
                   <Route path="/candidates" element={<ComingSoon title="Candidates Intelligence" />} />
                   <Route path="/settings" element={<ComingSoon title="System Settings" />} />
                   <Route path="*" element={<Navigate to="/" />} />

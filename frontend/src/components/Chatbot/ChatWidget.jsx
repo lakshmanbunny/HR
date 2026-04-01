@@ -1,17 +1,39 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Bot, User, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageSquare, X, Send, Bot, User, Trash2, Users, ExternalLink } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hi! I am the Paradigm AI Assistant. Ask me anything about our database.' }
-  ]);
+  
+  // Initialize messages from localStorage or use default
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('chat_history');
+    return saved ? JSON.parse(saved) : [
+      { role: 'assistant', content: 'Hi! I am the Paradigm AI Assistant. Ask me anything about our database.' }
+    ];
+  });
+
+  const [sourcingContext, setSourcingContext] = useState(() => {
+    const saved = localStorage.getItem('sourcing_context');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const navigate = useNavigate();
+
+  // Persistence logic: Save to localStorage whenever messages change
+  useEffect(() => {
+    localStorage.setItem('chat_history', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('sourcing_context', JSON.stringify(sourcingContext));
+  }, [sourcingContext]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -21,10 +43,43 @@ const ChatWidget = () => {
   const toggleChat = () => setIsOpen(!isOpen);
 
   const clearChat = () => {
-    setMessages([{ role: 'assistant', content: 'Hi! I am the Paradigm AI Assistant. Ask me anything about our database.' }]);
+    const defaultMsg = [{ role: 'assistant', content: 'Hi! I am the Paradigm AI Assistant. Ask me anything about our database.' }];
+    setMessages(defaultMsg);
+    setSourcingContext({});
+    localStorage.removeItem('chat_history');
+    localStorage.removeItem('sourcing_context');
   };
 
-  const renderSourceTable = (csvString) => {
+  const renderSourceTable = (csvString, intent) => {
+    if (intent === 'RECRUITMENT_SOURCE') {
+        try {
+            const candidates = typeof csvString === 'string' ? JSON.parse(csvString) : csvString;
+            if (Array.isArray(candidates) && candidates.length > 0) {
+                return (
+                    <div className="mt-3 p-4 bg-primary-blue/5 border border-primary-blue/20 rounded-xl flex flex-col items-center gap-3">
+                        <div className="text-[11px] font-bold text-primary-blue uppercase tracking-widest flex items-center gap-2">
+                             <Users size={14} />
+                             {candidates.length} Profiles Found
+                        </div>
+                        <button 
+                            onClick={() => {
+                                sessionStorage.setItem('last_sourced_candidates', JSON.stringify(candidates));
+                                setIsOpen(false);
+                                window.location.href = '/sourced-candidates';
+                            }}
+                            className="w-full bg-primary-blue text-white py-2.5 rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
+                        >
+                            View Sourced Candidates
+                            <ExternalLink size={12} />
+                        </button>
+                    </div>
+                );
+            }
+        } catch (e) {
+            return <pre className="text-[10px] text-red-500">Error parsing sourcing data</pre>;
+        }
+    }
+
     if (!csvString || typeof csvString !== 'string') return null;
     
     let lines = csvString.trim().split('\n');
@@ -95,7 +150,8 @@ const ChatWidget = () => {
         },
         body: JSON.stringify({
           message: userMsg.content,
-          history: messages // sending previous context
+          history: messages,
+          sourcing_context: sourcingContext
         }),
       });
 
@@ -105,9 +161,18 @@ const ChatWidget = () => {
 
       const data = await response.json();
       
+      if (data.sourcing_metadata) {
+          setSourcingContext(data.sourcing_metadata);
+      }
+
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: data.reply, source_data: data.source_data }
+        { 
+            role: 'assistant', 
+            content: data.reply, 
+            source_data: data.source_data,
+            intent: data.intent 
+        }
       ]);
     } catch (error) {
       console.error('Error sending message:', error);
@@ -175,6 +240,40 @@ const ChatWidget = () => {
                 </div>
                 
                 {msg.role === 'assistant' && msg.source_data && (
+                  <div className="w-full mt-2">
+                      {(() => {
+                          try {
+                              const candidates = typeof msg.source_data === 'string' ? JSON.parse(msg.source_data) : msg.source_data;
+                              // Only show the prominent button if it looks like a list of candidates
+                              if (Array.isArray(candidates) && candidates.length > 0 && candidates[0].link) {
+                                  return (
+                                      <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex flex-col items-center gap-3 shadow-sm">
+                                          <div className="text-[11px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                                              <Users size={14} />
+                                              {candidates.length} Profiles Sourced
+                                          </div>
+                                          <button 
+                                              onClick={() => {
+                                                  sessionStorage.setItem('last_sourced_candidates', JSON.stringify(candidates));
+                                                  setIsOpen(false);
+                                                  window.location.href = '/sourced-candidates';
+                                              }}
+                                              className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-bold text-[11px] uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg active:scale-[0.98]"
+                                          >
+                                              View Talent Pool
+                                              <ExternalLink size={12} />
+                                          </button>
+                                      </div>
+                                  );
+                              }
+                          } catch (e) {
+                              return null;
+                          }
+                      })()}
+                  </div>
+                )}
+
+                {msg.role === 'assistant' && msg.source_data && msg.intent !== 'RECRUITMENT_SOURCE' && (
                   <details className="mt-2 text-xs text-gray-500 bg-gray-200/50 rounded-lg p-2 w-full border border-gray-200 shadow-sm transition-all group">
                     <summary className="cursor-pointer font-medium hover:text-blue-600 list-none flex items-center">
                       <svg className="w-3 h-3 mr-1 transform transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -182,7 +281,7 @@ const ChatWidget = () => {
                       </svg>
                       View Data Source
                     </summary>
-                    {renderSourceTable(typeof msg.source_data === 'string' ? msg.source_data : JSON.stringify(msg.source_data, null, 2))}
+                    {renderSourceTable(msg.source_data)}
                   </details>
                 )}
 

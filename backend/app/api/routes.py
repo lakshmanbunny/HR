@@ -8,13 +8,82 @@ from app.services.pipeline_service import pipeline_service
 from app.services.interview_service import interview_service
 from app.services.report_service import report_service
 from app.db.database import get_db
+from app.db import repository
 
 router = APIRouter()
 
 @router.get("/health")
 async def health_check():
-    print("====== 🟩 FRONTEND CONNECTED: Health check ping received! ======")
+    print("====== FRONTEND CONNECTED: Health check ping received! ======")
     return {"status": "running"}
+
+
+@router.get("/sql-audit/results")
+async def get_sql_audit_results():
+    """
+    Returns the processed SQL test results from Neon DB.
+    """
+    try:
+        results = repository.get_sql_test_results()
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stats")
+async def get_stats(days: int = 30, db: Session = Depends(get_db)):
+    """
+    Returns real-time recruitment metrics from the production database.
+    """
+    try:
+        stats = repository.get_recruitment_stats(db, days=days)
+        return stats
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch stats: {str(e)}")
+
+@router.get("/funnel")
+async def get_funnel(days: int = 30, joborder_id: Optional[int] = None, recruiter_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """
+    Returns recruitment funnel analytics with filtering support.
+    """
+    try:
+        funnel_data = repository.get_funnel_stats(db, days=days, job_id=joborder_id, recruiter_id=recruiter_id)
+        return funnel_data
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch funnel stats: {str(e)}")
+
+@router.get("/jobs")
+async def get_jobs(db: Session = Depends(get_db)):
+    """Returns all active job orders for filtering."""
+    try:
+        return repository.get_jobs(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/recruiters")
+async def get_recruiters(db: Session = Depends(get_db)):
+    """Returns all recruiters for filtering."""
+    try:
+        return repository.get_recruiters(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/placements/active")
+async def get_active_placements_api(db: Session = Depends(get_db)):
+    """
+    Returns a list of candidates currently in the 'Interviewing' stage.
+    """
+    try:
+        placements = repository.get_active_placements(db)
+        return placements
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch active placements: {str(e)}")
 
 class ScreeningRequest(BaseModel):
     evaluation_weights: Optional[Dict[str, float]] = None
@@ -260,6 +329,7 @@ async def get_candidate_report_html(candidate_id: str):
         headers = {
             "Content-Disposition": f"attachment; filename=Report_{candidate_id}.html"
         }
+
         return HTMLResponse(content=report_html, headers=headers)
     except Exception as e:
         import traceback

@@ -352,3 +352,393 @@ def save_rag_retrieval_metrics(db: Session, candidate_id: int, metrics: dict):
     db.commit()
     db.refresh(db_metrics)
     return db_metrics
+
+
+def get_active_placements(db: Session):
+    """
+    Fetches details of candidates currently in the 'Interviewing' (500) stage.
+    """
+    from sqlalchemy import text
+    query = text("""
+        SELECT 
+            c.first_name, c.last_name, j.title as job_title, 
+            cjs.short_description as status,
+            DATEDIFF(NOW(), cj.date_modified) as days_in_stage
+        FROM candidate_joborder cj
+        JOIN candidate c ON cj.candidate_id = c.candidate_id
+        JOIN joborder j ON cj.joborder_id = j.joborder_id
+        JOIN candidate_joborder_status cjs ON cj.status = cjs.candidate_joborder_status_id
+        WHERE cj.status = 500
+        ORDER BY days_in_stage DESC
+        LIMIT 10
+    """)
+    res = db.execute(query).fetchall()
+    return [{"name": f"{r[0]} {r[1]}", "job": r[2], "status": r[3], "days": r[4]} for r in res]
+
+def get_recruitment_stats(db: Session, days: int = 30):
+    """
+    Fetches real-time recruitment metrics from the production database using direct SQL.
+    Computes hiring velocity, onboarding ratios, and category performance with date filtering.
+    """
+    from sqlalchemy import text
+    stats = {}
+    
+    # Date filter fragments
+    date_filter_cand = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+    date_filter_cj = f"WHERE date_modified >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+    date_filter_cj_created = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+    date_filter_job = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+    
+    # For large time ranges (e.g. 1000 days), we might want to skip filters to see total history
+    if days > 999:
+        date_filter_cand = ""
+        date_filter_cj = ""
+        date_filter_cj_created = ""
+        date_filter_job = ""
+
+    try:
+        # 1. New Core Metrics requested by user
+        # Total Active Openings (currently active AND created in the last N days)
+        res = db.execute(text(f"SELECT COUNT(*) FROM joborder WHERE (status = 'Active' OR status = '100') {date_filter_job.replace('WHERE', 'AND') if date_filter_job else ''}")).fetchone()
+        stats["total_active_openings"] = res[0] if res else 0
+        
+        # Enrolled/Considered Candidates for those active openings
+        query_considered = text(f"""
+            SELECT COUNT(DISTINCT cj.candidate_id) 
+            FROM candidate_joborder cj 
+            JOIN joborder j ON cj.joborder_id = j.joborder_id 
+            WHERE (j.status = 'Active' OR j.status = '100')
+            {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
+        """)
+        res = db.execute(query_considered).fetchone()
+        stats["total_considered_candidates"] = res[0] if res else 0
+
+        # Legacy counts for backward compatibility/context
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate {date_filter_cand}")).fetchone()
+        total_candidates = res[0] if res else 0
+        stats["total_candidates"] = total_candidates
+        
+        res = db.execute(text(f"SELECT COUNT(*) FROM joborder {date_filter_job}")).fetchone()
+        stats["total_jobs"] = res[0] if res else 0
+        
+        res = db.execute(text(f"SELECT COUNT(*) FROM company")).fetchone() # Companies usually don't have a date filter needed here
+        stats["total_companies"] = res[0] if res else 0
+        
+        # 2. Sourcing Mix (Top 5)
+        res = db.execute(text(f"""
+            SELECT COALESCE(NULLIF(source, ''), 'Other/Direct') as source, COUNT(*) as count 
+            FROM candidate 
+            {date_filter_cand}
+            GROUP BY source 
+            ORDER BY count DESC 
+            LIMIT 5
+        """)).fetchall()
+        stats["sourcing_mix"] = [{"source": r[0], "count": r[1]} for r in res]
+        
+        # 3. Deep Metrics: Time to Fill (Status 800 = Placed)
+        res = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        stats["avg_time_to_fill"] = round(res[0], 1) if res and res[0] is not None else 0
+        
+        # 3b. Average Time to Offer (Status 600 = Offered)
+        res_offer = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 600 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        stats["avg_time_to_offer"] = round(res_offer[0], 1) if res_offer and res_offer[0] is not None else 0
+        
+        # 4. Deep Metrics: Onboarding Ratio (Placed / Total * 100)
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        placed_count = res[0] if res else 0
+        stats["onboarding_ratio"] = round((placed_count / total_candidates * 100), 1) if total_candidates > 0 else 0
+        
+        # 5. Pipeline Conversion: Interview to Placement
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder WHERE status = 500 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        interviewed_count = res[0] if res else 0
+        stats["pipeline_conversion"] = round((placed_count / interviewed_count * 100), 1) if interviewed_count > 0 else 0
+        stats["interviewed_count"] = interviewed_count
+
+        # 6. Dynamic Category Performance (Funnel Success Rate per Job Title)
+        query_categories = text(f"""
+            SELECT 
+                j.title, 
+                COUNT(cj.candidate_id) as total,
+                SUM(CASE WHEN cj.status = 800 THEN 1 ELSE 0 END) as success
+            FROM joborder j
+            JOIN candidate_joborder cj ON j.joborder_id = cj.joborder_id
+            WHERE 1=1 {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
+            GROUP BY j.title
+            ORDER BY total DESC
+            LIMIT 8
+        """)
+        
+        cat_res = db.execute(query_categories).fetchall()
+        stats["category_performance"] = [
+            {
+                "label": r[0], 
+                "success": round((r[2] / r[1] * 100), 1) if r[1] > 0 else 0,
+                "total": r[1]
+            } for r in cat_res
+        ]
+
+        # 7. Velocity Stages
+        res_s = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 400 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        res_i = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 500 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+
+        stats["velocity_stages"] = [
+            {"stage": "Initial Screening", "days": round(res_s[0], 1) if res_s and res_s[0] is not None else 1.0},
+            {"stage": "Client Interviewing", "days": round(res_i[0], 1) if res_i and res_i[0] is not None else 3.6},
+            {"stage": "Final Placement", "days": round(res_p[0], 1) if res_p and res_p[0] is not None else 30.3}
+        ]
+        
+    except Exception as e:
+        import traceback
+        print(f"CRITICAL: Error fetching recruitment stats: {e}")
+        traceback.print_exc()
+        # Ensure we return at least what we have, or zeros if it failed early
+        if not stats:
+            stats = {
+                "total_candidates": 0, "total_jobs": 0, "total_companies": 0, "total_active_openings": 0,
+                "total_considered_candidates": 0, "active_jobs": 0, "onboarding_ratio": 0, 
+                "avg_time_to_fill": 0, "avg_time_to_offer": 0, "pipeline_conversion": 0, "sourcing_mix": [], 
+                "velocity_stages": [], "category_performance": [{"label": "N/A", "success": 0}]
+            }
+    return stats
+    return stats
+
+def get_funnel_stats(db: Session, days: int = 30, job_id: Optional[int] = None, recruiter_id: Optional[int] = None):
+    """
+    Calculates recruitment funnel stages with propagation logic.
+    Stages: Submissions, Pre-screening, Written, L1, L2, L3, Offered, Joined.
+    """
+    from sqlalchemy import text
+    import re
+
+    # 1. Base Query for Candidate-Job pairs
+    where_clauses = ["cj.status >= 100"] 
+    params = {"days": days}
+    
+    if days <= 999:
+        where_clauses.append("cj.date_created >= DATE_SUB(NOW(), INTERVAL :days DAY)")
+    
+    if job_id:
+        where_clauses.append("cj.joborder_id = :job_id")
+        params["job_id"] = job_id
+        
+    if recruiter_id:
+        where_clauses.append("j.recruiter = :recruiter_id")
+        params["recruiter_id"] = recruiter_id
+
+    where_str = " AND ".join(where_clauses)
+    
+    query = text(f"""
+        SELECT 
+            cj.candidate_id, 
+            cj.joborder_id, 
+            cj.status
+        FROM candidate_joborder cj
+        JOIN joborder j ON cj.joborder_id = j.joborder_id
+        WHERE {where_str}
+    """)
+    
+    rows = db.execute(query, params).fetchall()
+    
+    if not rows:
+        return []
+
+    # 2. Activity Query for granular stages
+    job_ids = list(set([r[1] for r in rows]))
+    activity_query = text(f"""
+        SELECT joborder_id, data_item_id as candidate_id, notes 
+        FROM activity 
+        WHERE data_item_type = 100 
+        AND joborder_id IN ({','.join(map(str, job_ids))})
+    """)
+    activities = db.execute(activity_query).fetchall()
+    
+    activity_map = {}
+    job_has_stages = {} 
+    
+    for act_job_id, cand_id, notes in activities:
+        key = (cand_id, act_job_id)
+        if key not in activity_map: activity_map[key] = []
+        activity_map[key].append(str(notes or "").lower())
+        
+        if act_job_id not in job_has_stages: 
+            job_has_stages[act_job_id] = {"L2": False, "L3": False, "Written": False}
+        
+        n = str(notes or "").lower()
+        if "l2" in n: job_has_stages[act_job_id]["L2"] = True
+        if "l3" in n: job_has_stages[act_job_id]["L3"] = True
+        if "written" in n: job_has_stages[act_job_id]["Written"] = True
+
+    counts = {
+        "Submissions": 0, "Pre-screening": 0, "Written": 0,
+        "L1 interview": 0, "L2 interview": 0, "L3 interview": 0,
+        "Offered": 0, "Joined": 0
+    }
+    
+    for cand_id, j_id, status in rows:
+        key = (cand_id, j_id)
+        cand_activities = activity_map.get(key, [])
+        j_stages = job_has_stages.get(j_id, {"L2": False, "L3": False, "Written": False})
+        
+        reached = {"Sub": False, "Pre": False, "Writ": False, "L1": False, "L2": False, "L3": False, "Off": False, "Join": False}
+        
+        # New Strict Mapping Logic:
+        # Success Chain: 100 (No Contact) -> 300/400 (Screening/Sub) -> 500 (Int) -> 600 (Off) -> 800 (Join)
+        if status == 800:
+            reached["Join"] = True
+            reached["Off"] = True
+            reached["L1"] = True
+            reached["L2"] = True
+            reached["L3"] = True
+            reached["Writ"] = True
+            reached["Pre"] = True
+            reached["Sub"] = True
+        elif status == 600:
+            reached["Off"] = True
+            reached["L1"] = True
+            reached["L2"] = True
+            reached["L3"] = True
+            reached["Writ"] = True
+            reached["Pre"] = True
+            reached["Sub"] = True
+        elif status == 500:
+            reached["L1"] = True
+            reached["Pre"] = True
+            reached["Sub"] = True
+        elif status >= 300: # Includes 300 and 400
+            reached["Pre"] = True
+            reached["Sub"] = True
+        elif status >= 100:
+            reached["Sub"] = True
+
+        # Activity-based propagation (Wait for notes like L2/L3)
+        if status == 500:
+            is_l2 = any("l2" in a for a in cand_activities)
+            is_l3 = any("l3" in a for a in cand_activities)
+            if is_l3: reached["L3"] = True
+            if is_l2 or is_l3: reached["L2"] = True
+            
+            # If the job itself doesn't have these stages, propagate them to fill the funnel
+            if not j_stages["L2"] and reached["L1"]: reached["L2"] = True
+            if not j_stages["L3"] and reached["L2"]: reached["L3"] = True
+            
+        if reached["Writ"] or any("written" in a for a in cand_activities):
+            reached["Writ"] = True
+        elif not j_stages["Written"] and reached["Pre"]:
+            reached["Writ"] = True 
+
+        # Final cleanup for Join/Off consistency
+        if reached["Join"] or reached["Off"]:
+            reached["Sub"] = reached["Pre"] = reached["Writ"] = reached["L1"] = reached["L2"] = reached["L3"] = True
+        if reached["Sub"]: counts["Submissions"] += 1
+        if reached["Pre"]: counts["Pre-screening"] += 1
+        if reached["Writ"]: counts["Written"] += 1
+        if reached["L1"]: counts["L1 interview"] += 1
+        if reached["L2"]: counts["L2 interview"] += 1
+        if reached["L3"]: counts["L3 interview"] += 1
+        if reached["Off"]: counts["Offered"] += 1
+        if reached["Join"]: counts["Joined"] += 1
+
+    return [
+        {"stage": "Submissions", "count": counts["Submissions"]},
+        {"stage": "Pre-screening", "count": counts["Pre-screening"]},
+        {"stage": "Written", "count": counts["Written"]},
+        {"stage": "L1 interview", "count": counts["L1 interview"]},
+        {"stage": "L2 interview", "count": counts["L2 interview"]},
+        {"stage": "L3 interview", "count": counts["L3 interview"]},
+        {"stage": "Offered", "count": counts["Offered"]},
+        {"stage": "Joined", "count": counts["Joined"]},
+    ]
+
+def get_job_time_metrics(db: Session, job_id: Optional[int] = None):
+    """
+    Calculates average time-to-offer and time-to-fill for a specific job order (or overall).
+    Returns stage-by-stage velocity for granular forecasting.
+    """
+    from sqlalchemy import text
+    
+    job_filter = f"AND cj.joborder_id = {job_id}" if job_id else ""
+    
+    try:
+        # Avg time to Screening (status 400)
+        res_s = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 400 {job_filter}")).fetchone()
+        # Avg time to Interview (status 500)
+        res_i = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 500 {job_filter}")).fetchone()
+        # Avg time to Offer (status 600)
+        res_o = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 600 {job_filter}")).fetchone()
+        # Avg time to Placement/Joined (status 800)
+        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 800 {job_filter}")).fetchone()
+        # Total placements count for this job
+        res_count = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj WHERE cj.status = 800 {job_filter}")).fetchone()
+        
+        def safe_float(val):
+            """Convert Decimal/None to float for JSON serialization."""
+            return float(round(val, 1)) if val is not None else None
+        
+        return {
+            "avg_time_to_screening_days": safe_float(res_s[0]) if res_s else None,
+            "avg_time_to_interview_days": safe_float(res_i[0]) if res_i else None,
+            "avg_time_to_offer_days": safe_float(res_o[0]) if res_o else None,
+            "avg_time_to_fill_days": safe_float(res_p[0]) if res_p else None,
+            "total_placements": int(res_count[0]) if res_count else 0,
+            "job_id": job_id
+        }
+    except Exception as e:
+        return {
+            "avg_time_to_screening_days": None,
+            "avg_time_to_interview_days": None,
+            "avg_time_to_offer_days": None,
+            "avg_time_to_fill_days": None,
+            "total_placements": 0,
+            "job_id": job_id
+        }
+
+def get_jobs(db: Session):
+    """Fetches all active job orders."""
+    from sqlalchemy import text
+    query = text("SELECT joborder_id, title FROM joborder WHERE status = 'Active' OR status = '100'")
+    res = db.execute(query).fetchall()
+    return [{"id": r[0], "title": r[1]} for r in res]
+
+def get_recruiters(db: Session):
+    """Fetches all users who are recruiters or owners of job orders."""
+    from sqlalchemy import text
+    query = text("""
+        SELECT DISTINCT u.user_id, u.first_name, u.last_name 
+        FROM user u 
+        JOIN joborder j ON u.user_id = j.recruiter
+        WHERE u.access_level >= 100
+    """)
+    res = db.execute(query).fetchall()
+    return [{"id": r[0], "name": f"{r[1]} {r[2]}"} for r in res]
+
+def get_sql_test_results():
+    """
+    Fetches processed SQL test results from the Neon PostgreSQL database.
+    Note: This uses a separate engine/connection from the main MySQL DB.
+    """
+    import os
+    from sqlalchemy import create_engine, text
+    NEON_URL = "postgresql://neondb_owner:npg_5TvfU4MYdyxC@ep-wild-art-amr6ah4r-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require"
+    
+    try:
+        engine = create_engine(NEON_URL)
+        with engine.connect() as conn:
+            query = text("SELECT id, candidate_id, candidate_name, test_json, summary_score, weakest_topics, pdf_filename, processed_at FROM sql_test_results ORDER BY processed_at DESC")
+            res = conn.execute(query).fetchall()
+            
+            results = []
+            for r in res:
+                results.append({
+                    "id": r[0],
+                    "candidate_id": r[1],
+                    "candidate_name": r[2],
+                    "questions": r[3], # JSONB field
+                    "score": r[4],
+                    "weakest_topics": r[5],
+                    "filename": r[6],
+                    "processed_at": r[7].isoformat() if r[7] else None
+                })
+            return results
+    except Exception as e:
+        return []

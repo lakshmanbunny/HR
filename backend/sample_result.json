@@ -1,0 +1,65 @@
+{
+    "candidate_id": "1968",
+    "candidate_name": "Devi Kalyani Devadi",
+    "questions": [
+        {
+            "number": 1,
+            "topic": "Subqueries and Joins",
+            "is_correct": true
+        },
+        {
+            "number": 2,
+            "topic": "SQL Syntax and WHERE Clause",
+            "is_correct": false
+        },
+        {
+            "number": 3,
+            "topic": "Joins (Inner, Left, Right, Full Outer, Self)",
+            "is_correct": true
+        },
+        {
+            "number": 4,
+            "topic": "Joins and Ordering Results",
+            "is_correct": true
+        },
+        {
+            "number": 5,
+            "topic": "Temporary Tables and Conditional Logic",
+            "is_correct": false
+        },
+        {
+            "number": 6,
+            "topic": "Joins with Multiple Tables",
+            "is_correct": true
+        },
+        {
+            "number": 7,
+            "topic": "Stored Procedures",
+            "is_correct": false
+        },
+        {
+            "number": 8,
+            "topic": "String Functions (Substring and Charindex)",
+            "is_correct": true
+        },
+        {
+            "number": 9,
+            "topic": "String Functions (Locate and Reverse)",
+            "is_correct": true
+        },
+        {
+            "number": 10,
+            "topic": "Creating Clustered Indexes",
+            "is_correct": false
+        }
+    ],
+    "summary": {
+        "total_score_out_of_10": 6,
+        "weakest_topics": [
+            "SQL Syntax and WHERE Clause",
+            "Temporary Tables and Conditional Logic",
+            "Stored Procedures",
+            "Creating Clustered Indexes"
+        ]
+    }
+}

@@ -1,0 +1,47 @@
+
+--- Testing Query: today is 24th march 2026.can you tell me the recent hires ---
+Generated SQL: SELECT CONCAT(T1.first_name, ' ', T1.last_name), T3.title, T4.name, T2.date_modified FROM candidate AS T1 INNER JOIN candidate_joborder AS T2 ON T1.candidate_id = T2.candidate_id INNER JOIN joborder AS T3 ON T2.joborder_id = T3.joborder_id INNER JOIN company AS T4 ON T3.company_id = T4.company_id WHERE T2.status = 800 AND T2.date_modified >= DATE_SUB('2026-03-24', INTERVAL 30 DAY) ORDER BY T2.date_modified DESC
+Reply: Of course!
+
+Based on the information, there have been no new hires in the last 30 days.
+Source Data: Query executed successfully, but returned 0 results.
+
+--- Testing Query: can you tell me the details and status of Vijaya Sagar Talasila ---
+Generated SQL: SELECT T1.first_name, T1.last_name, T1.email1, T1.phone_cell, T1.key_skills, T1.current_employer, T3.title, T4.short_description FROM candidate AS T1 LEFT JOIN candidate_joborder AS T2 ON T1.candidate_id = T2.candidate_id LEFT JOIN joborder AS T3 ON T2.joborder_id = T3.joborder_id LEFT JOIN candidate_joborder_status AS T4 ON T2.status = T4.candidate_joborder_status_id WHERE T1.first_name = 'Vijaya Sagar' AND T1.last_name = 'Talasila'
+Reply: Of course!
+
+Unfortunately, I couldn't find any details or status for a candidate named Vijaya Sagar Talasila in our system.
+
+Would you like to double-check the spelling of the name?
+Source Data: Query executed successfully, but returned 0 results.
+
+--- Testing Query: can find candidate named anandha krishnan h ---
+Generated SQL: SELECT * FROM candidate WHERE CONCAT(first_name, ' ', last_name) LIKE '%anandha krishnan h%'
+Reply: Of course! I found a candidate matching that name. Here are the details:
+
+**Anandha Krishnan H**
+
+*   **Location:** Hyderabad, Telangana (Willing to relocate)
+*   **Contact:** anandhakrishnanh1998@gmail.com | 811-182-8059
+*   **Key Skills:** AIML, Python, LLM
+*   **Current Employer:** Techolution
+*   **Availability:** October 15, 2025
+*   **Pay:**
+    *   Current: 35 LPA
+    *   Desired: 42 to 45 LPA
+Source Data: candidate_id,site_id,last_name,first_name,middle_name,phone_home,phone_cell,phone_work,address,city,state,zip,source,date_available,can_relocate,notes,key_skills,current_employer,entered_by,owner,date_created,date_modified,email1,email2,web_site,import_id,is_hot,eeo_ethnic_type_id,eeo_veteran_type_id,eeo_disability_status,eeo_gender,desired_pay,current_pay,is_active,is_admin_hidden,best_time_to_call
+48,1,Krishnan H,Anandha,,,811-182-8059,,Manikonda,Hyderabad,Telangana,,LinkedIN,2025-10-15,1,,"AIML, Python, LLM",Techolution,1253,1253,2025-11-03 11:50:37,2026-02-18 15:29:24,anandhakrishnanh1998@gmail.com,,,0,0,0,0,,,42 to 45 LPA,35 LPA,1,0,
+
+
+--- Testing Query: which candidates are Placed? ---
+Generated SQL: SELECT CONCAT(T1.first_name, ' ', T1.last_name) FROM candidate AS T1 INNER JOIN candidate_joborder AS T2 ON T1.candidate_id = T2.candidate_id WHERE T2.status = 800
+Reply: Of course! Here are the candidates who have been placed:
+
+*   Ranjith Bandela
+*   Thirumalaiah Shiriveri
+*   Vijaya Sagar Talasila
+Source Data: "CONCAT(T1.first_name, ' ', T1.last_name)"
+Ranjith Bandela
+Thirumalaiah Shiriveri
+Vijaya Sagar Talasila
+
