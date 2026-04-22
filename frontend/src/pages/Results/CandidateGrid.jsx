@@ -23,6 +23,7 @@ const CandidateRow = ({ candidate, evalData, onSelect }) => {
         let isMounted = true;
         const fetchRowMetrics = async () => {
             const API_BASE = "/api";
+
             setIsLoading(true);
             try {
                 const retRes = await fetch(`${API_BASE}/rag/retrieval-metrics/${candidate.candidate_id}`);
@@ -209,11 +210,11 @@ const CandidateGrid = ({ results, onSelectCandidate }) => {
 
                         <button
                             onClick={() => {
-                                    const API_BASE = "/api";
-                                    paginatedCandidates.forEach((cand, index) => {
-                                        setTimeout(() => {
-                                            const link = document.createElement('a');
-                                            link.href = `${API_BASE}/candidate/${cand.candidate_id}/report-html`;
+                                const API_BASE = "/api";
+                                paginatedCandidates.forEach((cand, index) => {
+                                    setTimeout(() => {
+                                        const link = document.createElement('a');
+                                        link.href = `${API_BASE}/candidate/${cand.candidate_id}/report-html`;
                                         link.setAttribute('download', `Report_${cand.name.replace(/\s+/g, '_')}.html`);
                                         document.body.appendChild(link);
                                         link.click();
