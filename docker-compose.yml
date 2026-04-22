@@ -6,13 +6,6 @@ services:
       - "5000:5000"
     env_file:
       - ./backend/.env
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
     restart: always
 
   frontend:
