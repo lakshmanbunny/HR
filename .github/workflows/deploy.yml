@@ -15,8 +15,9 @@ jobs:
           # Navigate to project directory
           cd ~/HR
           
-          # Pull latest code
-          git pull origin main
+          # Fetch and force reset to match origin/main
+          git fetch origin main
+          git reset --hard origin/main
           
           # Rebuild and restart containers
           docker compose down
