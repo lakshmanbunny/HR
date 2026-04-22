@@ -11,10 +11,4 @@ export default defineConfig({
   server: {
     allowedHosts: ["3e0a-14-141-24-246.ngrok-free.app", "localhost"],
   },
-  build: {
-    target: 'esnext',
-    modulePreload: {
-      polyfill: false
-    }
-  }
 })
