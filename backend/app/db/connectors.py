@@ -92,7 +92,7 @@ class ProductionSqlConnector(BaseDatabaseConnector):
                     schema_info.append("   - 400: Submitted to Client\n")
                     schema_info.append("   - 500: Interviewing\n")
                     schema_info.append("   - 600: Offered\n")
-                    schema_info.append("   - 800: Placed / Hired / Selected (Goal status)\n\n")
+                    schema_info.append("   - 800/900: Joined / Placed / Hired (Goal status)\n\n")
                     
                     schema_info.append("4. Use `STR_TO_DATE()` for dates. Use `LIMIT` for pagination. Handling nulls with `IFNULL()`.\n\n")
 

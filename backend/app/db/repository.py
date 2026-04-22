@@ -435,8 +435,8 @@ def get_recruitment_stats(db: Session, days: int = 30):
         """)).fetchall()
         stats["sourcing_mix"] = [{"source": r[0], "count": r[1]} for r in res]
         
-        # 3. Deep Metrics: Time to Fill (Status 800 = Placed)
-        res = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        # 3. Deep Metrics: Time to Fill (Status 800 or 900 = Joined)
+        res = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
         stats["avg_time_to_fill"] = round(res[0], 1) if res and res[0] is not None else 0
         
         # 3b. Average Time to Offer (Status 600 = Offered)
@@ -444,7 +444,7 @@ def get_recruitment_stats(db: Session, days: int = 30):
         stats["avg_time_to_offer"] = round(res_offer[0], 1) if res_offer and res_offer[0] is not None else 0
         
         # 4. Deep Metrics: Onboarding Ratio (Placed / Total * 100)
-        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder WHERE status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
         placed_count = res[0] if res else 0
         stats["onboarding_ratio"] = round((placed_count / total_candidates * 100), 1) if total_candidates > 0 else 0
         
@@ -459,7 +459,7 @@ def get_recruitment_stats(db: Session, days: int = 30):
             SELECT 
                 j.title, 
                 COUNT(cj.candidate_id) as total,
-                SUM(CASE WHEN cj.status = 800 THEN 1 ELSE 0 END) as success
+                SUM(CASE WHEN cj.status IN (800, 900) THEN 1 ELSE 0 END) as success
             FROM joborder j
             JOIN candidate_joborder cj ON j.joborder_id = cj.joborder_id
             WHERE 1=1 {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
@@ -480,7 +480,7 @@ def get_recruitment_stats(db: Session, days: int = 30):
         # 7. Velocity Stages
         res_s = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 400 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
         res_i = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 500 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
-        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
+        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}")).fetchone()
 
         stats["velocity_stages"] = [
             {"stage": "Initial Screening", "days": round(res_s[0], 1) if res_s and res_s[0] is not None else 1.0},
@@ -583,8 +583,8 @@ def get_funnel_stats(db: Session, days: int = 30, job_id: Optional[int] = None, 
         reached = {"Sub": False, "Pre": False, "Writ": False, "L1": False, "L2": False, "L3": False, "Off": False, "Join": False}
         
         # New Strict Mapping Logic:
-        # Success Chain: 100 (No Contact) -> 300/400 (Screening/Sub) -> 500 (Int) -> 600 (Off) -> 800 (Join)
-        if status == 800:
+        # Success Chain: 100 (No Contact) -> 300/400 (Screening/Sub) -> 500 (Int) -> 600 (Off) -> 800/900 (Join)
+        if status in (800, 900):
             reached["Join"] = True
             reached["Off"] = True
             reached["L1"] = True
@@ -643,9 +643,9 @@ def get_funnel_stats(db: Session, days: int = 30, job_id: Optional[int] = None, 
         {"stage": "Submissions", "count": counts["Submissions"]},
         {"stage": "Pre-screening", "count": counts["Pre-screening"]},
         {"stage": "Written", "count": counts["Written"]},
-        {"stage": "L1 interview", "count": counts["L1 interview"]},
-        {"stage": "L2 interview", "count": counts["L2 interview"]},
-        {"stage": "L3 interview", "count": counts["L3 interview"]},
+        {"stage": "L1 Interview", "count": counts["L1 interview"]},
+        {"stage": "L2 Interview", "count": counts["L2 interview"]},
+        {"stage": "L3 Interview", "count": counts["L3 interview"]},
         {"stage": "Offered", "count": counts["Offered"]},
         {"stage": "Joined", "count": counts["Joined"]},
     ]
@@ -666,10 +666,10 @@ def get_job_time_metrics(db: Session, job_id: Optional[int] = None):
         res_i = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 500 {job_filter}")).fetchone()
         # Avg time to Offer (status 600)
         res_o = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 600 {job_filter}")).fetchone()
-        # Avg time to Placement/Joined (status 800)
-        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status = 800 {job_filter}")).fetchone()
+        # Avg time to Placement/Joined (status 800 or 900)
+        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder cj WHERE cj.status IN (800, 900) {job_filter}")).fetchone()
         # Total placements count for this job
-        res_count = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj WHERE cj.status = 800 {job_filter}")).fetchone()
+        res_count = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj WHERE cj.status IN (800, 900) {job_filter}")).fetchone()
         
         def safe_float(val):
             """Convert Decimal/None to float for JSON serialization."""

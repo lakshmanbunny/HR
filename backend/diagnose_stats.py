@@ -27,7 +27,7 @@ def run_test():
         "Total Jobs": f"SELECT COUNT(*) FROM joborder {date_filter_job}",
         "Total Companies": f"SELECT COUNT(*) FROM company",
         "Sourcing Mix": f"SELECT COALESCE(NULLIF(source, ''), 'Other/Direct') as source, COUNT(*) as count FROM candidate {date_filter_cand} GROUP BY source ORDER BY count DESC LIMIT 5",
-        "Time to Fill": f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status = 800 {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}",
+        "Time to Fill": f"SELECT AVG(DATEDIFF(date_modified, date_created)) FROM candidate_joborder WHERE status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND') if date_filter_cj else ''}",
         "Category Performance": f"SELECT j.title, COUNT(cj.candidate_id) as total, SUM(CASE WHEN cj.status >= 500 THEN 1 ELSE 0 END) as success FROM joborder j JOIN candidate_joborder cj ON j.joborder_id = cj.joborder_id WHERE 1=1 {date_filter_cj_created.replace('WHERE', 'AND') if date_filter_cj_created else '' } GROUP BY j.title ORDER BY total DESC LIMIT 8"
     }
 
