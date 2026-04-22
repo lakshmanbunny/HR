@@ -22,10 +22,10 @@ const CandidateRow = ({ candidate, evalData, onSelect }) => {
     useEffect(() => {
         let isMounted = true;
         const fetchRowMetrics = async () => {
-            const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+            const API_BASE = "/api";
             setIsLoading(true);
             try {
-                const retRes = await fetch(`${apiBase}/rag/retrieval-metrics/${candidate.candidate_id}`);
+                const retRes = await fetch(`${API_BASE}/rag/retrieval-metrics/${candidate.candidate_id}`);
                 if (isMounted && retRes.ok) {
                     const data = await retRes.json();
                     if (data) setRetrievalMetrics(data);
@@ -128,8 +128,8 @@ const CandidateRow = ({ candidate, evalData, onSelect }) => {
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
-                        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-                        window.open(`${apiBase}/candidate/${candidate.candidate_id}/report-html`, '_blank');
+                        const API_BASE = "/api";
+                        window.open(`${API_BASE}/candidate/${candidate.candidate_id}/report-html`, '_blank');
                     }}
                     className="p-2 text-gray-400 hover:text-primary-blue transition-colors rounded-lg hover:bg-blue-50"
                     title="Download Report"
@@ -209,11 +209,11 @@ const CandidateGrid = ({ results, onSelectCandidate }) => {
 
                         <button
                             onClick={() => {
-                                const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-                                paginatedCandidates.forEach((cand, index) => {
-                                    setTimeout(() => {
-                                        const link = document.createElement('a');
-                                        link.href = `${apiBase}/candidate/${cand.candidate_id}/report-html`;
+                                    const API_BASE = "/api";
+                                    paginatedCandidates.forEach((cand, index) => {
+                                        setTimeout(() => {
+                                            const link = document.createElement('a');
+                                            link.href = `${API_BASE}/candidate/${cand.candidate_id}/report-html`;
                                         link.setAttribute('download', `Report_${cand.name.replace(/\s+/g, '_')}.html`);
                                         document.body.appendChild(link);
                                         link.click();

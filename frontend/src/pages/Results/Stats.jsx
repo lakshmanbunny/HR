@@ -3,7 +3,7 @@ import { TrendingUp, Clock, Users, CheckCircle, BarChart3, ArrowUpRight, Calenda
 import RecruitmentFunnel from '../../components/RecruitmentFunnel';
 import RecruitmentFunnelV2 from '../../components/RecruitmentFunnelV2';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE = "/api";
 
 // Realistic dummy data for demonstration when DB is unreachable
 const DUMMY_FUNNEL_DATA = [
@@ -48,8 +48,8 @@ const Stats = () => {
         const fetchFilters = async () => {
             try {
                 const [jobsRes, recruitersRes] = await Promise.all([
-                    fetchWithTimeout(`${API_BASE_URL}/jobs`),
-                    fetchWithTimeout(`${API_BASE_URL}/recruiters`)
+                    fetchWithTimeout(`${API_BASE}/jobs`),
+                    fetchWithTimeout(`${API_BASE}/recruiters`)
                 ]);
                 
                 if (jobsRes.ok) {
@@ -73,7 +73,7 @@ const Stats = () => {
             setIsLoading(true);
             setErrorMessage("");
             try {
-                const response = await fetchWithTimeout(`${API_BASE_URL}/stats?days=${filterDays}`);
+                const response = await fetchWithTimeout(`${API_BASE}/stats?days=${filterDays}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch stats: ${response.status} ${response.statusText}`);
                 }
@@ -115,7 +115,7 @@ const Stats = () => {
         const fetchFunnel = async () => {
             setIsFunnelLoading(true);
             try {
-                let url = `${API_BASE_URL}/funnel?days=${filterDays}`;
+                let url = `${API_BASE}/funnel?days=${filterDays}`;
                 if (selectedJob) url += `&joborder_id=${selectedJob}`;
                 if (selectedRecruiter) url += `&recruiter_id=${selectedRecruiter}`;
                 
@@ -143,7 +143,7 @@ const Stats = () => {
     const handleShowTracker = async () => {
         if (!showTracker) {
             try {
-                const response = await fetchWithTimeout(`${API_BASE_URL}/placements/active`);
+                const response = await fetchWithTimeout(`${API_BASE}/placements/active`);
                 if (response.ok) {
                     const data = await response.json();
                     setActivePlacements(Array.isArray(data) ? data : []);

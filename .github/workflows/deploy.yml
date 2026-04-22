@@ -1,0 +1,32 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute remote ssh commands
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USER }}
+          password: ${{ secrets.VM_PASSWORD }}
+          # If using SSH key, uncomment line below and add SSH_KEY to secrets
+          # key: ${{ secrets.SSH_KEY }}
+          script: |
+            # Navigate to project directory
+            cd ~/HR
+            
+            # Pull latest code
+            git pull origin main
+            
+            # Rebuild and restart containers
+            docker compose down
+            docker compose up --build -d

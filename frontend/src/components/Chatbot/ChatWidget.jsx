@@ -3,7 +3,7 @@ import { MessageSquare, X, Send, Bot, User, Trash2, Users, ExternalLink } from '
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE = "/api";
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -143,7 +143,7 @@ const ChatWidget = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chatbot/ask`, {
+      const response = await fetch(`${API_BASE}/chatbot/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

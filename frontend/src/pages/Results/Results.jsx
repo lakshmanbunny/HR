@@ -85,9 +85,9 @@ const Results = () => {
 
     const downloadReport = async () => {
         if (!selectedCandidateId) return;
-        const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+        const API_BASE = "/api";
         try {
-            const response = await fetch(`${apiBase}/candidate/${selectedCandidateId}/report-html`);
+            const response = await fetch(`${API_BASE}/candidate/${selectedCandidateId}/report-html`);
             if (response.ok) {
                 const html = await response.text();
                 const blob = new Blob([html], { type: 'text/html' });
@@ -388,9 +388,9 @@ const Results = () => {
                                                         <button
                                                             onClick={async () => {
                                                                 setIsSubmitting(true);
-                                                                const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+                                                                const API_BASE = "/api";
                                                                 try {
-                                                                    const res = await fetch(`${apiBase}/candidate/${selectedCandidateId}/approve-interview`, { method: 'POST' });
+                                                                    const res = await fetch(`${API_BASE}/candidate/${selectedCandidateId}/approve-interview`, { method: 'POST' });
                                                                     if (res.ok) alert("Interview Approved & Sent!");
                                                                     runScreening(evaluationWeights);
                                                                 } catch (e) { console.error(e) }
