@@ -19,6 +19,6 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
           
-          # Rebuild and restart containers (no-cache to force Vite 6 downgrade)
-          docker compose down
-          docker compose up --build --no-cache -d
+          # Rebuild without cache and restart
+          docker compose build --no-cache
+          docker compose up -d
