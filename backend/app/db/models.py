@@ -9,22 +9,22 @@ class Candidate(Base):
     __tablename__ = "candidates"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    github_url = Column(String)
-    linkedin_url = Column(String, nullable=True)
+    name = Column(String(255), index=True)
+    email = Column(String(255), unique=True, index=True)
+    github_url = Column(String(255))
+    linkedin_url = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class WoxsenCandidate(Base):
     __tablename__ = "woxsen_candidates"
 
     id = Column(Integer, primary_key=True, index=True)
-    roll_number = Column(String, unique=True, index=True)
-    name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
-    github_url = Column(String, nullable=True)
-    linkedin_url = Column(String, nullable=True)
-    resume_file_path = Column(String, nullable=True)
+    roll_number = Column(String(100), unique=True, index=True)
+    name = Column(String(255), index=True)
+    email = Column(String(255), unique=True, index=True)
+    github_url = Column(String(255), nullable=True)
+    linkedin_url = Column(String(255), nullable=True)
+    resume_file_path = Column(String(500), nullable=True)
     raw_resume_text = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -33,7 +33,7 @@ class JobDescription(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     jd_text = Column(Text)
-    jd_hash = Column(String, unique=True, index=True)
+    jd_hash = Column(String(64), unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_active = Column(Boolean, default=True)
 
