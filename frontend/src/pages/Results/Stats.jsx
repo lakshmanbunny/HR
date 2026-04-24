@@ -5,17 +5,7 @@ import RecruitmentFunnelV2 from '../../components/RecruitmentFunnelV2';
 
 const API_BASE = "/api";
 
-// Realistic dummy data for demonstration when DB is unreachable
-const DUMMY_FUNNEL_DATA = [
-    { stage: "Submissions", count: 420 },
-    { stage: "Pre-screening", count: 285 },
-    { stage: "Written", count: 142 },
-    { stage: "L1 Interview", count: 86 },
-    { stage: "L2 Interview", count: 44 },
-    { stage: "L3 Interview", count: 22 },
-    { stage: "Offered", count: 12 },
-    { stage: "Joined", count: 8 }
-];
+
 
 const Stats = () => {
     const [statsData, setStatsData] = useState(null);
@@ -86,27 +76,9 @@ const Stats = () => {
                 setIsPreviewMode(false);
             } catch (error) {
                 console.error("Error fetching stats:", error);
-                setErrorMessage("Database connectivity issue. Showing limited layout.");
+                setErrorMessage("Database connectivity issue. Please check your connection.");
                 setIsPreviewMode(true);
-                // Provide some basic dummy stats
-                setStatsData({
-                    avg_time_to_fill: 24,
-                    total_active_openings: 12,
-                    onboarding_ratio: 88,
-                    total_considered_candidates: 156,
-                    pipeline_conversion: 18,
-                    interviewed_count: 32,
-                    velocity_stages: [
-                        { stage: "Initial Screening", days: 1.2 },
-                        { stage: "Interviewing", days: 4.5 },
-                        { stage: "Onboarding", days: 28.0 }
-                    ],
-                    category_performance: [
-                        {label: 'Engineering', success: 94},
-                        {label: 'Product', success: 88},
-                        {label: 'Marketing', success: 72}
-                    ]
-                });
+                setStatsData(null);
             } finally {
                 setIsLoading(false);
             }
@@ -127,17 +99,13 @@ const Stats = () => {
                 const response = await fetchWithTimeout(url);
                 if (response.ok) {
                     const data = await response.json();
-                    if (!data || data.length === 0) {
-                        setFunnelData(DUMMY_FUNNEL_DATA);
-                    } else {
-                        setFunnelData(data);
-                    }
+                    setFunnelData(Array.isArray(data) ? data : []);
                 } else {
-                    setFunnelData(DUMMY_FUNNEL_DATA);
+                    setFunnelData([]);
                 }
             } catch (error) {
                 console.error("Error fetching funnel stats:", error);
-                setFunnelData(DUMMY_FUNNEL_DATA);
+                setFunnelData([]);
             } finally {
                 setIsFunnelLoading(false);
             }
