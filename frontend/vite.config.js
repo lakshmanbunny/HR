@@ -10,5 +10,12 @@ export default defineConfig({
   ],
   server: {
     allowedHosts: ["3e0a-14-141-24-246.ngrok-free.app", "localhost"],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api')
+      }
+    }
   },
 })

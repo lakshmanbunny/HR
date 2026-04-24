@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Clock, Users, CheckCircle, BarChart3, ArrowUpRight, Calendar, Filter, Briefcase, User as UserIcon, AlertCircle, Info } from 'lucide-react';
+import { TrendingUp, Clock, Users, CheckCircle, BarChart3, ArrowUpRight, Calendar, Filter, Briefcase, User as UserIcon, AlertCircle, Info, Award } from 'lucide-react';
 import RecruitmentFunnel from '../../components/RecruitmentFunnel';
 import RecruitmentFunnelV2 from '../../components/RecruitmentFunnelV2';
 
