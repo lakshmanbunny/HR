@@ -32,6 +32,7 @@ const Stats = () => {
     const [filterDays, setFilterDays] = useState(30);
     const [selectedJob, setSelectedJob] = useState("");
     const [selectedRecruiter, setSelectedRecruiter] = useState("");
+    const [selectedStatus, setSelectedStatus] = useState("");
     const [isPreviewMode, setIsPreviewMode] = useState(false);
 
     // Helper for fetch with timeout
@@ -72,8 +73,11 @@ const Stats = () => {
         const fetchStats = async () => {
             setIsLoading(true);
             setErrorMessage("");
-            try {
-                const response = await fetchWithTimeout(`${API_BASE}/stats?days=${filterDays}`);
+        try {
+                let url = `${API_BASE}/stats?days=${filterDays}`;
+                if (selectedStatus) url += `&job_status=${selectedStatus}`;
+                
+                const response = await fetchWithTimeout(url);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch stats: ${response.status} ${response.statusText}`);
                 }
@@ -108,7 +112,7 @@ const Stats = () => {
             }
         };
         fetchStats();
-    }, [filterDays]);
+    }, [filterDays, selectedStatus]);
 
     // 3. Fetch Funnel Data - Affected by ALL Filters
     useEffect(() => {
@@ -118,6 +122,7 @@ const Stats = () => {
                 let url = `${API_BASE}/funnel?days=${filterDays}`;
                 if (selectedJob) url += `&joborder_id=${selectedJob}`;
                 if (selectedRecruiter) url += `&recruiter_id=${selectedRecruiter}`;
+                if (selectedStatus) url += `&job_status=${selectedStatus}`;
                 
                 const response = await fetchWithTimeout(url);
                 if (response.ok) {
@@ -138,7 +143,7 @@ const Stats = () => {
             }
         };
         fetchFunnel();
-    }, [filterDays, selectedJob, selectedRecruiter]);
+    }, [filterDays, selectedJob, selectedRecruiter, selectedStatus]);
 
     const handleShowTracker = async () => {
         if (!showTracker) {
@@ -300,7 +305,7 @@ const Stats = () => {
                             </select>
                         </div>
 
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-muted/30 rounded-lg" title="Applies to FUNNEL only">
+                        <div className="flex items-center gap-2 px-3 py-1.5 border-r border-border-subtle bg-bg-muted/30 rounded-lg" title="Applies to FUNNEL only">
                            <UserIcon size={14} className="text-orange-500" />
                            <select 
                                 value={selectedRecruiter} 
@@ -311,6 +316,21 @@ const Stats = () => {
                                 {(recruiters || []).map(r => (
                                     <option key={r.id} value={r.id}>{r.name}</option>
                                 ))}
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-muted/30 rounded-lg" title="Job Status Filter">
+                           <Filter size={14} className="text-blue-500" />
+                           <select 
+                                value={selectedStatus} 
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                className="text-[10px] font-black text-text-main uppercase tracking-wider bg-transparent border-none outline-none cursor-pointer w-[100px]"
+                            >
+                                <option value="">All Statuses</option>
+                                <option value="Active">Active</option>
+                                <option value="Closed">Closed</option>
+                                <option value="On Hold">On Hold</option>
+                                <option value="Full">Full</option>
                             </select>
                         </div>
                     </div>
