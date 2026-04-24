@@ -443,23 +443,49 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
         """)).fetchall()
         stats["sourcing_mix"] = [{"source": r[0], "count": r[1]} for r in res]
         
-        # 3. Deep Metrics: Time to Fill (Status 800 or 900 = Joined)
+        # 3. Deep Metrics: Offer-to-Onboarding Ratio (DOJ based)
+        # We only consider candidates who have a 'Date of Joining' in extra_field
+        # and where that date is in the past (before today).
+        
+        # SQL for Offer to Onboarding Ratio logic
+        # DOJ format in DB: MM-DD-YY
+        query_offers = text(f"""
+            SELECT 
+                COUNT(DISTINCT CASE WHEN cj.status >= 600 AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_offers,
+                COUNT(DISTINCT CASE WHEN cj.status IN (800, 900) AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_joined,
+                COUNT(DISTINCT CASE WHEN cj.status >= 600 AND STR_TO_DATE(ef.value, '%m-%d-%y') >= CURRENT_DATE() THEN cj.candidate_id END) as future_offers
+            FROM candidate_joborder cj
+            JOIN extra_field ef ON cj.candidate_id = ef.data_item_id
+            JOIN joborder j ON cj.joborder_id = j.joborder_id
+            WHERE ef.field_name = 'Date of Joining'
+            {f"AND j.status = '{job_status}'" if job_status else ""}
+            {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}
+        """)
+        
+        offer_res = db.execute(query_offers).fetchone()
+        past_offers = offer_res[0] if offer_res else 0
+        past_joined = offer_res[1] if offer_res else 0
+        future_offers = offer_res[2] if offer_res else 0
+        
+        stats["offer_to_onboarding_ratio"] = round((past_joined / past_offers * 100), 1) if past_offers > 0 else 0
+        stats["offer_breakdown"] = {
+            "past_offers": past_offers,
+            "past_joined": past_joined,
+            "future_offers": future_offers
+        }
+
+        # 3b. Average Time to Fill (Status 800 or 900 = Joined)
         res = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
         stats["avg_time_to_fill"] = round(res[0], 1) if res and res[0] is not None else 0
         
-        # 3b. Average Time to Offer (Status 600 = Offered)
+        # 3c. Average Time to Offer (Status 600 = Offered)
         res_offer = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 600 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
         stats["avg_time_to_offer"] = round(res_offer[0], 1) if res_offer and res_offer[0] is not None else 0
         
-        # 4. Deep Metrics: Onboarding Ratio (Placed / Total * 100)
-        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
-        placed_count = res[0] if res else 0
-        stats["onboarding_ratio"] = round((placed_count / total_candidates * 100), 1) if total_candidates > 0 else 0
-        
-        # 5. Pipeline Conversion: Interview to Placement
+        # 4. Pipeline Conversion: Interview to Placement
         res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 500 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
         interviewed_count = res[0] if res else 0
-        stats["pipeline_conversion"] = round((placed_count / interviewed_count * 100), 1) if interviewed_count > 0 else 0
+        stats["pipeline_conversion"] = round((past_joined / interviewed_count * 100), 1) if interviewed_count > 0 else 0
         stats["interviewed_count"] = interviewed_count
 
         # 6. Dynamic Category Performance (Funnel Success Rate per Job Title)

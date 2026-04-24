@@ -149,10 +149,12 @@ const Stats = () => {
             color: "text-purple-600", bg: "bg-purple-50"
         },
         {
-            title: "Onboarding Ratio",
-            value: `${statsData.onboarding_ratio || 0}%`,
-            change: "+0.8%", trend: "up", icon: CheckCircle,
-            color: "text-success", bg: "bg-success/10"
+            title: "Offer-to-Onboard Ratio",
+            value: `${statsData.offer_to_onboarding_ratio || 0}%`,
+            change: `Past: ${statsData.offer_breakdown?.past_offers || 0} / Future: ${statsData.offer_breakdown?.future_offers || 0}`, 
+            trend: "up", icon: Award,
+            color: "text-success", bg: "bg-success/10",
+            tooltip: "Ratio of Joined candidates vs Offers made for past joining dates."
         },
         {
             title: "Enrolled Candidates",
@@ -318,6 +320,7 @@ const Stats = () => {
                             </div>
                             <h3 className="text-[11px] font-black text-text-muted uppercase tracking-[0.2em] mb-1">{metric.title}</h3>
                             <p className="text-2xl font-black text-[#0A0F1E]">{metric.value}</p>
+                            {metric.tooltip && <p className="text-[9px] text-text-muted font-medium mt-2 leading-tight">{metric.tooltip}</p>}
                         </div>
                     ))}
                 </div>
