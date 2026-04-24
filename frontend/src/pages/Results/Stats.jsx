@@ -20,6 +20,9 @@ const Stats = () => {
     const [errorMessage, setErrorMessage] = useState("");
     
     const [filterDays, setFilterDays] = useState(30);
+    const [dateRangeType, setDateRangeType] = useState("30"); // "30", "90", "365", "custom"
+    const [customStartDate, setCustomStartDate] = useState("");
+    const [customEndDate, setCustomEndDate] = useState("");
     const [selectedJob, setSelectedJob] = useState("");
     const [selectedRecruiter, setSelectedRecruiter] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("");
@@ -63,8 +66,11 @@ const Stats = () => {
         const fetchStats = async () => {
             setIsLoading(true);
             setErrorMessage("");
-        try {
+            try {
                 let url = `${API_BASE}/stats?days=${filterDays}`;
+                if (dateRangeType === "custom" && customStartDate && customEndDate) {
+                    url = `${API_BASE}/stats?start_date=${customStartDate}&end_date=${customEndDate}`;
+                }
                 if (selectedStatus) url += `&job_status=${selectedStatus}`;
                 
                 const response = await fetchWithTimeout(url);
@@ -84,7 +90,7 @@ const Stats = () => {
             }
         };
         fetchStats();
-    }, [filterDays, selectedStatus]);
+    }, [filterDays, dateRangeType, customStartDate, customEndDate, selectedStatus]);
 
     // 3. Fetch Funnel Data - Affected by ALL Filters
     useEffect(() => {
@@ -92,6 +98,9 @@ const Stats = () => {
             setIsFunnelLoading(true);
             try {
                 let url = `${API_BASE}/funnel?days=${filterDays}`;
+                if (dateRangeType === "custom" && customStartDate && customEndDate) {
+                    url = `${API_BASE}/funnel?start_date=${customStartDate}&end_date=${customEndDate}`;
+                }
                 if (selectedJob) url += `&joborder_id=${selectedJob}`;
                 if (selectedRecruiter) url += `&recruiter_id=${selectedRecruiter}`;
                 if (selectedStatus) url += `&job_status=${selectedStatus}`;
@@ -111,7 +120,7 @@ const Stats = () => {
             }
         };
         fetchFunnel();
-    }, [filterDays, selectedJob, selectedRecruiter, selectedStatus]);
+    }, [filterDays, dateRangeType, customStartDate, customEndDate, selectedJob, selectedRecruiter, selectedStatus]);
 
     const handleShowTracker = async () => {
         if (!showTracker) {
@@ -157,12 +166,42 @@ const Stats = () => {
             tooltip: "Ratio of Joined candidates vs Offers made for past joining dates."
         },
         {
+            title: "Offers Released",
+            value: (statsData.offers_released || 0).toLocaleString(),
+            change: "Total Offers", trend: "up", icon: Award,
+            color: "text-blue-600", bg: "bg-blue-50",
+            tooltip: "Total number of offers made in the selected period."
+        },
+        {
+            title: "Joined Candidates",
+            value: (statsData.joined_candidates || 0).toLocaleString(),
+            change: "Onboarded", trend: "up", icon: Users,
+            color: "text-emerald-600", bg: "bg-emerald-50",
+            tooltip: "Number of candidates who have successfully joined."
+        },
+        {
+            title: "Offers Dropped",
+            value: (statsData.offers_dropped || 0).toLocaleString(),
+            change: "Lost Talent", trend: "down", icon: AlertCircle,
+            color: "text-rose-600", bg: "bg-rose-50",
+            tooltip: "Candidates who were offered but dropped out or were declined."
+        },
+        {
             title: "Enrolled Candidates",
             value: (statsData.total_considered_candidates || 0).toLocaleString(),
             change: "Active", trend: "up", icon: Users,
-            color: "text-orange-500", bg: "bg-orange-50"
+            color: "text-blue-600", bg: "bg-blue-50"
         }
-    ] : [];
+    ] : [
+        { title: "Average Time to Fill", value: "0 Days", change: "-2.4%", trend: "down", icon: Clock, color: "text-primary-blue", bg: "bg-primary-blue/10" },
+        { title: "Average Time to Offer", value: "0 Days", change: "Velocity", trend: "up", icon: Clock, color: "text-indigo-600", bg: "bg-indigo-50" },
+        { title: "Total Active Openings", value: "0", change: "Live", trend: "up", icon: BarChart3, color: "text-purple-600", bg: "bg-purple-50" },
+        { title: "Offer-to-Onboard Ratio", value: "0%", change: "0 / 0", trend: "up", icon: Award, color: "text-success", bg: "bg-success/10" },
+        { title: "Offers Released", value: "0", change: "Total Offers", trend: "up", icon: Award, color: "text-blue-600", bg: "bg-blue-50" },
+        { title: "Joined Candidates", value: "0", change: "Onboarded", trend: "up", icon: Users, color: "text-emerald-600", bg: "bg-emerald-50" },
+        { title: "Offers Dropped", value: "0", change: "Lost Talent", trend: "down", icon: AlertCircle, color: "text-rose-600", bg: "bg-rose-50" },
+        { title: "Enrolled Candidates", value: "0", change: "Active", trend: "up", icon: Users, color: "text-blue-600", bg: "bg-blue-50" }
+    ];
 
     // Only show full loading if we have absolutely no data yet
     if (isLoading && !statsData) {
@@ -245,20 +284,48 @@ const Stats = () => {
                     
                     {/* Multi-Level Filtering Bar */}
                     <div className="flex flex-wrap items-center gap-3 p-3 bg-white border border-border-subtle rounded-2xl shadow-sm">
-                        {/* Global Filter */}
-                        <div className="flex items-center gap-2 px-3 py-1.5 border-r border-border-subtle group" title="Applies to ALL metrics">
-                           <Calendar size={14} className="text-primary-blue" />
-                           <select 
-                                value={filterDays} 
-                                onChange={(e) => setFilterDays(parseInt(e.target.value))}
-                                className="text-[10px] font-black text-text-main uppercase tracking-wider bg-transparent border-none outline-none cursor-pointer"
+                        {/* Time Filter Dropdown */}
+                        <div className="flex items-center gap-3 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm">
+                            <div className="p-2 bg-primary-blue/5 rounded-xl text-primary-blue">
+                                <Calendar size={16} />
+                            </div>
+                            <select 
+                                value={dateRangeType}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setDateRangeType(val);
+                                    if (val !== "custom") {
+                                        setFilterDays(parseInt(val));
+                                    }
+                                }}
+                                className="bg-transparent border-none text-xs font-black text-[#0A0F1E] focus:ring-0 cursor-pointer pr-8 uppercase tracking-widest"
                             >
                                 <option value="30">Last Month</option>
                                 <option value="90">Last Quarter</option>
                                 <option value="365">Last Year</option>
-                                <option value="10000">Overall</option>
+                                <option value="custom">Custom Range</option>
+                                <option value="9999">All Time</option>
                             </select>
                         </div>
+
+                        {/* Custom Date Inputs */}
+                        {dateRangeType === "custom" && (
+                            <div className="flex items-center gap-2 animate-in slide-in-from-left duration-300">
+                                <input 
+                                    type="date" 
+                                    value={customStartDate}
+                                    onChange={(e) => setCustomStartDate(e.target.value)}
+                                    className="bg-white px-3 py-2 rounded-xl border border-gray-100 text-[10px] font-bold focus:ring-2 focus:ring-primary-blue outline-none"
+                                />
+                                <span className="text-text-muted text-[10px] font-black uppercase">to</span>
+                                <input 
+                                    type="date" 
+                                    value={customEndDate}
+                                    onChange={(e) => setCustomEndDate(e.target.value)}
+                                    className="bg-white px-3 py-2 rounded-xl border border-gray-100 text-[10px] font-bold focus:ring-2 focus:ring-primary-blue outline-none"
+                                />
+                            </div>
+                        )}
 
                         {/* Scoped Filters (Funnel Only) */}
                         <div className="flex items-center gap-2 px-3 py-1.5 border-r border-border-subtle bg-bg-muted/30 rounded-lg" title="Applies to FUNNEL only">

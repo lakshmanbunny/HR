@@ -375,26 +375,32 @@ def get_active_placements(db: Session):
     res = db.execute(query).fetchall()
     return [{"name": f"{r[0]} {r[1]}", "job": r[2], "status": r[3], "days": r[4]} for r in res]
 
-def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str] = None):
+def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
     Fetches real-time recruitment metrics from the production database using direct SQL.
-    Computes hiring velocity, onboarding ratios, and category performance with date filtering.
+    Supports fixed day intervals (Last Month, Quarter, Year) or custom date ranges.
     """
     from sqlalchemy import text
     stats = {}
     
-    # Date filter fragments
-    date_filter_cand = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
-    date_filter_cj = f"WHERE date_modified >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
-    date_filter_cj_created = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
-    date_filter_job = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
-    
-    # For large time ranges (e.g. 1000 days), we might want to skip filters to see total history
-    if days > 999:
-        date_filter_cand = ""
-        date_filter_cj = ""
-        date_filter_cj_created = ""
-        date_filter_job = ""
+    # Date filter logic: Use start_date/end_date if provided, else fallback to 'days'
+    if start_date and end_date:
+        date_filter_cand = f"WHERE date_created BETWEEN '{start_date}' AND '{end_date}'"
+        date_filter_cj = f"WHERE date_modified BETWEEN '{start_date}' AND '{end_date}'"
+        date_filter_cj_created = f"WHERE date_created BETWEEN '{start_date}' AND '{end_date}'"
+        date_filter_job = f"WHERE date_created BETWEEN '{start_date}' AND '{end_date}'"
+    else:
+        date_filter_cand = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+        date_filter_cj = f"WHERE date_modified >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+        date_filter_cj_created = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+        date_filter_job = f"WHERE date_created >= DATE_SUB(NOW(), INTERVAL {days} DAY)"
+        
+        # For 'All Time' (large days value)
+        if days > 999:
+            date_filter_cand = ""
+            date_filter_cj = ""
+            date_filter_cj_created = ""
+            date_filter_job = ""
 
     # Job Status filter fragments
     status_filter_job = f"AND status = '{job_status}'" if job_status else ""
@@ -428,6 +434,19 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
         
         res = db.execute(text(f"SELECT COUNT(*) FROM joborder {date_filter_job} {status_filter_job.replace('AND', 'WHERE') if not date_filter_job else status_filter_job}")).fetchone()
         stats["total_jobs"] = res[0] if res else 0
+
+        # 1b. New High-Level Metrics: Offers, Joined, Dropped
+        # Offers Released (status 600, 800, 900)
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (600, 800, 900) {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}")).fetchone()
+        stats["offers_released"] = res[0] if res else 0
+
+        # Joined Candidates (status 800, 900)
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (800, 900) {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}")).fetchone()
+        stats["joined_candidates"] = res[0] if res else 0
+
+        # Offers Dropped (status 901)
+        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 901 {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}")).fetchone()
+        stats["offers_dropped"] = res[0] if res else 0
         
         res = db.execute(text(f"SELECT COUNT(*) FROM company")).fetchone() # Companies usually don't have a date filter needed here
         stats["total_companies"] = res[0] if res else 0
@@ -538,21 +557,23 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
                 "velocity_stages": [], "category_performance": [{"label": "N/A", "success": 0}]
             }
     return stats
-    return stats
 
-def get_funnel_stats(db: Session, days: int = 30, job_id: Optional[int] = None, recruiter_id: Optional[int] = None, job_status: Optional[str] = None):
+def get_funnel_stats(db: Session, days: int = 30, job_id: Optional[int] = None, recruiter_id: Optional[int] = None, job_status: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
-    Calculates recruitment funnel stages with propagation logic.
-    Stages: Submissions, Pre-screening, Written, L1, L2, L3, Offered, Joined.
+    Computes a consolidated hiring funnel by mapping candidate statuses to stages.
+    Supports filtering by days, specific job, recruiter, job_status, or custom date range.
     """
     from sqlalchemy import text
-    import re
-
+    
     # 1. Base Query for Candidate-Job pairs
     where_clauses = ["cj.status >= 100"] 
     params = {"days": days}
     
-    if days <= 999:
+    if start_date and end_date:
+        where_clauses.append("cj.date_created BETWEEN :start_date AND :end_date")
+        params["start_date"] = start_date
+        params["end_date"] = end_date
+    elif days <= 999:
         where_clauses.append("cj.date_created >= DATE_SUB(NOW(), INTERVAL :days DAY)")
     
     if job_id:

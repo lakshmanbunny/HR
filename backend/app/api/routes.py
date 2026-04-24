@@ -31,12 +31,12 @@ async def get_sql_audit_results():
 
 
 @router.get("/stats")
-async def get_stats(days: int = 30, job_status: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_stats(days: int = 30, job_status: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, db: Session = Depends(get_db)):
     """
     Returns real-time recruitment metrics from the production database.
     """
     try:
-        stats = repository.get_recruitment_stats(db, days=days, job_status=job_status)
+        stats = repository.get_recruitment_stats(db, days=days, job_status=job_status, start_date=start_date, end_date=end_date)
         return stats
     except Exception as e:
         import traceback
@@ -44,12 +44,12 @@ async def get_stats(days: int = 30, job_status: Optional[str] = None, db: Sessio
         raise HTTPException(status_code=500, detail=f"Failed to fetch stats: {str(e)}")
 
 @router.get("/funnel")
-async def get_funnel(days: int = 30, joborder_id: Optional[int] = None, recruiter_id: Optional[int] = None, job_status: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_funnel(days: int = 30, joborder_id: Optional[int] = None, recruiter_id: Optional[int] = None, job_status: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, db: Session = Depends(get_db)):
     """
     Returns recruitment funnel analytics with filtering support.
     """
     try:
-        funnel_data = repository.get_funnel_stats(db, days=days, job_id=joborder_id, recruiter_id=recruiter_id, job_status=job_status)
+        funnel_data = repository.get_funnel_stats(db, days=days, job_id=joborder_id, recruiter_id=recruiter_id, job_status=job_status, start_date=start_date, end_date=end_date)
         return funnel_data
     except Exception as e:
         import traceback
