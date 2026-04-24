@@ -448,18 +448,20 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
         # and where that date is in the past (before today).
         
         # SQL for Offer to Onboarding Ratio logic
-        # DOJ format in DB: MM-DD-YY
+        # Denominator: Status 600 (Offered) or 800/900 (Joined)
+        # Numerator: Status 800/900 (Joined)
+        # We filter by cj.date_created to align with the Funnel filtering
         query_offers = text(f"""
             SELECT 
-                COUNT(DISTINCT CASE WHEN cj.status >= 600 AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_offers,
+                COUNT(DISTINCT CASE WHEN cj.status IN (600, 800, 900) AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_offers,
                 COUNT(DISTINCT CASE WHEN cj.status IN (800, 900) AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_joined,
-                COUNT(DISTINCT CASE WHEN cj.status >= 600 AND STR_TO_DATE(ef.value, '%m-%d-%y') >= CURRENT_DATE() THEN cj.candidate_id END) as future_offers
+                COUNT(DISTINCT CASE WHEN cj.status IN (600, 800, 900) AND STR_TO_DATE(ef.value, '%m-%d-%y') >= CURRENT_DATE() THEN cj.candidate_id END) as future_offers
             FROM candidate_joborder cj
             JOIN extra_field ef ON cj.candidate_id = ef.data_item_id
             JOIN joborder j ON cj.joborder_id = j.joborder_id
             WHERE ef.field_name = 'Date of Joining'
             {f"AND j.status = '{job_status}'" if job_status else ""}
-            {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}
+            {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
         """)
         
         offer_res = db.execute(query_offers).fetchone()
