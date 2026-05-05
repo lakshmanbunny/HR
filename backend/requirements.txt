@@ -16,3 +16,4 @@ psycopg2-binary
 python-multipart
 livekit-api
 pymysql
+pypdf
