@@ -3,7 +3,13 @@ import { CheckCircle, Circle, Loader2 } from 'lucide-react';
 import { useScreening } from '../../context/ScreeningContext';
 
 const Processing = () => {
-    const { STAGES, currentStep } = useScreening();
+    const { STAGES, currentStep, isScreening, results, runScreening } = useScreening();
+
+    React.useEffect(() => {
+        if (!isScreening && !results) {
+            runScreening();
+        }
+    }, [isScreening, results, runScreening]);
 
     return (
         <div className="flex flex-1 flex-col items-center justify-center p-14 bg-bg-muted overflow-y-auto">

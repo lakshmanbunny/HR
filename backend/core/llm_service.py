@@ -16,16 +16,16 @@ class LLMService:
     Enterprise-grade LLM Service with LangSmith observability and LangChain integration.
     """
     def __init__(self):
-        # Generator: Gemini 2.0 Pro Experimental
+        # Generator: Gemini 2.0 Flash
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-pro",
+            model="gemini-2.0-flash",
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=0.2,
             convert_system_message_to_human=True
         )
-        # Judge: Gemini 1.5 Pro
+        # Judge: Gemini 2.0 Flash
         self.judge_llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-pro",
+            model="gemini-2.0-flash",
             google_api_key=settings.GOOGLE_API_KEY,
             temperature=0.1,
             convert_system_message_to_human=True

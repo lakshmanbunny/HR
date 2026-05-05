@@ -22,6 +22,7 @@ init_db()
 
 from app.api.routes import router
 from app.interview.routes import router as interview_router
+from app.api.opencats_routes import router as opencats_router
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +57,7 @@ from app.api.chatbot_routes import router as chatbot_router
 app.include_router(router, prefix=settings.API_V1_STR)
 app.include_router(interview_router, prefix=f"{settings.API_V1_STR}/interview")
 app.include_router(chatbot_router, prefix=f"{settings.API_V1_STR}/chatbot")
+app.include_router(opencats_router, prefix=f"{settings.API_V1_STR}/opencats")
 
 @app.get("/")
 async def root():

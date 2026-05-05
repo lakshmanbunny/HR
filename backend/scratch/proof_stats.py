@@ -37,17 +37,16 @@ q3 = text("""
 submissions = db.execute(q3).scalar()
 print(f"Submissions (Total Assignments): {submissions}")
 
-# Check for duplicates (One candidate in multiple jobs)
-q4 = text("""
-    SELECT candidate_id, COUNT(*) as jobs 
-    FROM candidate_joborder 
-    WHERE date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-    GROUP BY candidate_id 
-    HAVING jobs > 1
+print("\n--- PROOF 3: DROPPED CANDIDATE DOJ ---")
+q5 = text("""
+    SELECT cj.candidate_id, ef.value as doj 
+    FROM candidate_joborder cj 
+    LEFT JOIN extra_field ef ON cj.candidate_id = ef.data_item_id AND ef.field_name = 'Date of Joining' 
+    WHERE cj.status = 901 
+    AND cj.date_created >= DATE_SUB(NOW(), INTERVAL 30 DAY)
 """)
-dupes = db.execute(q4).fetchall()
-print(f"Candidates assigned to multiple jobs: {len(dupes)}")
-for d in dupes:
-    print(f"Candidate {d.candidate_id} is in {d.jobs} jobs")
+res5 = db.execute(q5).fetchall()
+for r in res5:
+    print(f"Dropped Candidate: {r.candidate_id} | DOJ: {r.doj}")
 
 db.close()

@@ -12,6 +12,7 @@ import GithubTop10 from './pages/Results/GithubTop10';
 import Stats from './pages/Results/Stats';
 import SourcedResults from './pages/Results/SourcedResults';
 import ComingSoon from './pages/Shared/ComingSoon';
+import CandidatesPage from './pages/Candidates/CandidatesPage';
 import InterviewRoom from './pages/InterviewRoom';
 import Landing from './pages/Landing/Landing';
 import ChatWidget from './components/Chatbot/ChatWidget';
@@ -126,7 +127,7 @@ const AppContent = () => {
                    <Route path="/github-top10" element={<GithubTop10 />} />
                   <Route path="/stats" element={<Stats />} />
                   <Route path="/sourced-candidates" element={<SourcedResults />} />
-                  <Route path="/candidates" element={<ComingSoon title="Candidates Intelligence" />} />
+                  <Route path="/candidates" element={<CandidatesPage />} />
                   <Route path="/settings" element={<ComingSoon title="System Settings" />} />
                   <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
