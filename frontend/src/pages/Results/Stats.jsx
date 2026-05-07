@@ -71,7 +71,9 @@ const Stats = () => {
                 if (dateRangeType === "custom" && customStartDate && customEndDate) {
                     url = `${API_BASE}/stats?start_date=${customStartDate}&end_date=${customEndDate}`;
                 }
-                if (selectedStatus) url += `&job_status=${selectedStatus}`;
+                if (selectedJob) url += (url.includes('?') ? '&' : '?') + `joborder_id=${selectedJob}`;
+                if (selectedRecruiter) url += (url.includes('?') ? '&' : '?') + `recruiter_id=${selectedRecruiter}`;
+                if (selectedStatus) url += (url.includes('?') ? '&' : '?') + `job_status=${selectedStatus}`;
                 
                 const response = await fetchWithTimeout(url);
                 if (!response.ok) {
@@ -90,7 +92,7 @@ const Stats = () => {
             }
         };
         fetchStats();
-    }, [filterDays, dateRangeType, customStartDate, customEndDate, selectedStatus]);
+    }, [filterDays, dateRangeType, customStartDate, customEndDate, selectedJob, selectedRecruiter, selectedStatus]);
 
     // 3. Fetch Funnel Data - Affected by ALL Filters
     useEffect(() => {

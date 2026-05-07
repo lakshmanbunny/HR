@@ -375,7 +375,7 @@ def get_active_placements(db: Session):
     res = db.execute(query).fetchall()
     return [{"name": f"{r[0]} {r[1]}", "job": r[2], "status": r[3], "days": r[4]} for r in res]
 
-def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
+def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str] = None, job_id: Optional[int] = None, recruiter_id: Optional[int] = None, start_date: Optional[str] = None, end_date: Optional[str] = None):
     """
     Fetches real-time recruitment metrics from the production database using direct SQL.
     Supports fixed day intervals (Last Month, Quarter, Year) or custom date ranges.
@@ -402,50 +402,67 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
             date_filter_cj_created = ""
             date_filter_job = ""
 
-    # Job Status filter fragments
-    status_filter_job = f"AND status = '{job_status}'" if job_status else ""
-    status_filter_cj = f"JOIN joborder j_s ON cj.joborder_id = j_s.joborder_id AND j_s.status = '{job_status}'" if job_status else ""
-    # Note: For cj queries that already join joborder, we just add AND j.status = ...
+    # Scoped Filters (Job, Recruiter, Status)
+    # These fragments will be injected into the various queries below
+    f_job = f"AND joborder_id = {job_id}" if job_id else ""
+    f_recruiter = f"AND recruiter = {recruiter_id}" if recruiter_id else ""
+    f_status = f"AND status = '{job_status}'" if job_status else ""
+    
+    # Fragments for cj (candidate_joborder) queries which join with joborder j
+    f_cj_job = f"AND cj.joborder_id = {job_id}" if job_id else ""
+    f_cj_recruiter = f"AND j.recruiter = {recruiter_id}" if recruiter_id else ""
+    f_cj_status = f"AND j.status = '{job_status}'" if job_status else ""
+    
+    # Combined filter for joborder queries
+    job_where = f"WHERE 1=1 {f_job} {f_recruiter} {f_status} {date_filter_job.replace('WHERE', 'AND') if date_filter_job else ''}"
+    
+    # Combined filter for cj queries (requires JOIN joborder j)
+    cj_where_base = f"JOIN joborder j ON cj.joborder_id = j.joborder_id WHERE 1=1 {f_cj_job} {f_cj_recruiter} {f_cj_status}"
 
 
     try:
         # 1. New Core Metrics requested by user
-        # Total Active Openings (currently active AND created in the last N days)
-        # If job_status is provided, we filter by that specific status instead of 'Active'/'100'
+        # Total Active Openings
         base_status_filter = f"status = '{job_status}'" if job_status else "(status = 'Active' OR status = '100')"
-        res = db.execute(text(f"SELECT COUNT(*) FROM joborder WHERE {base_status_filter} {date_filter_job.replace('WHERE', 'AND') if date_filter_job else ''}")).fetchone()
+        job_active_where = f"WHERE {base_status_filter} {f_job} {f_recruiter} {date_filter_job.replace('WHERE', 'AND') if date_filter_job else ''}"
+        res = db.execute(text(f"SELECT COUNT(*) FROM joborder {job_active_where}")).fetchone()
         stats["total_active_openings"] = res[0] if res else 0
         
-        # Enrolled/Considered Candidates for those active openings
+        # Enrolled/Considered Candidates
         query_considered = text(f"""
             SELECT COUNT(DISTINCT cj.candidate_id) 
             FROM candidate_joborder cj 
             JOIN joborder j ON cj.joborder_id = j.joborder_id 
             WHERE ({base_status_filter.replace('status', 'j.status')})
+            {f_cj_job} {f_cj_recruiter}
             {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
         """)
         res = db.execute(query_considered).fetchone()
         stats["total_considered_candidates"] = res[0] if res else 0
 
-        # Legacy counts for backward compatibility/context
+        # Total Candidates (Only date filter applies)
         res = db.execute(text(f"SELECT COUNT(*) FROM candidate {date_filter_cand}")).fetchone()
         total_candidates = res[0] if res else 0
         stats["total_candidates"] = total_candidates
         
-        res = db.execute(text(f"SELECT COUNT(*) FROM joborder {date_filter_job} {status_filter_job.replace('AND', 'WHERE') if not date_filter_job else status_filter_job}")).fetchone()
+        # Total Jobs (All jobs matching filter)
+        res = db.execute(text(f"SELECT COUNT(*) FROM joborder {job_where}")).fetchone()
         stats["total_jobs"] = res[0] if res else 0
 
         # 1b. New High-Level Metrics: Offers, Joined, Dropped
         # Offers Released (status 600, 800, 900)
-        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (600, 800, 900) {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}")).fetchone()
+        query_offers = f"SELECT COUNT(*) FROM candidate_joborder cj {cj_where_base} AND cj.status IN (600, 800, 900) {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}"
+        res = db.execute(text(query_offers)).fetchone()
         stats["offers_released"] = res[0] if res else 0
 
         # Joined Candidates (status 800, 900)
-        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (800, 900) {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}")).fetchone()
+        query_joined = f"SELECT COUNT(*) FROM candidate_joborder cj {cj_where_base} AND cj.status IN (800, 900) {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}"
+        res = db.execute(text(query_joined)).fetchone()
         stats["joined_candidates"] = res[0] if res else 0
 
         # Offers Dropped (status 901)
-        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 901 {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}")).fetchone()
+        query_dropped = f"SELECT COUNT(*) FROM candidate_joborder cj {cj_where_base} AND cj.status = 901 {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}"
+        res = db.execute(text(query_dropped)).fetchone()
         stats["offers_dropped"] = res[0] if res else 0
         
         res = db.execute(text(f"SELECT COUNT(*) FROM company")).fetchone() # Companies usually don't have a date filter needed here
@@ -470,7 +487,8 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
         # Denominator: Status 600 (Offered) or 800/900 (Joined)
         # Numerator: Status 800/900 (Joined)
         # We filter by cj.date_created to align with the Funnel filtering
-        query_offers = text(f"""
+        # 3. Deep Metrics: Offer-to-Onboarding Ratio (DOJ based)
+        query_offers_ratio = text(f"""
             SELECT 
                 COUNT(DISTINCT CASE WHEN cj.status IN (600, 800, 900) AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_offers,
                 COUNT(DISTINCT CASE WHEN cj.status IN (800, 900) AND STR_TO_DATE(ef.value, '%m-%d-%y') < CURRENT_DATE() THEN cj.candidate_id END) as past_joined,
@@ -479,11 +497,11 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
             JOIN extra_field ef ON cj.candidate_id = ef.data_item_id
             JOIN joborder j ON cj.joborder_id = j.joborder_id
             WHERE ef.field_name = 'Date of Joining'
-            {f"AND j.status = '{job_status}'" if job_status else ""}
+            {f_cj_job} {f_cj_recruiter} {f_cj_status}
             {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
         """)
         
-        offer_res = db.execute(query_offers).fetchone()
+        offer_res = db.execute(query_offers_ratio).fetchone()
         past_offers = offer_res[0] if offer_res else 0
         past_joined = offer_res[1] if offer_res else 0
         future_offers = offer_res[2] if offer_res else 0
@@ -496,20 +514,23 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
         }
 
         # 3b. Average Time to Fill (Status 800 or 900 = Joined)
-        res = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
+        query_ttf = f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {cj_where_base} AND cj.status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}"
+        res = db.execute(text(query_ttf)).fetchone()
         stats["avg_time_to_fill"] = round(res[0], 1) if res and res[0] is not None else 0
         
         # 3c. Average Time to Offer (Status 600 = Offered)
-        res_offer = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 600 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
+        query_tto = f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {cj_where_base} AND cj.status = 600 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}"
+        res_offer = db.execute(text(query_tto)).fetchone()
         stats["avg_time_to_offer"] = round(res_offer[0], 1) if res_offer and res_offer[0] is not None else 0
         
         # 4. Pipeline Conversion: Interview to Placement
-        res = db.execute(text(f"SELECT COUNT(*) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 500 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
+        query_interviewed = f"SELECT COUNT(*) FROM candidate_joborder cj {cj_where_base} AND cj.status = 500 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}"
+        res = db.execute(text(query_interviewed)).fetchone()
         interviewed_count = res[0] if res else 0
         stats["pipeline_conversion"] = round((past_joined / interviewed_count * 100), 1) if interviewed_count > 0 else 0
         stats["interviewed_count"] = interviewed_count
 
-        # 6. Dynamic Category Performance (Funnel Success Rate per Job Title)
+        # 6. Dynamic Category Performance
         query_categories = text(f"""
             SELECT 
                 j.title, 
@@ -517,8 +538,8 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
                 SUM(CASE WHEN cj.status IN (800, 900) THEN 1 ELSE 0 END) as success
             FROM joborder j
             JOIN candidate_joborder cj ON j.joborder_id = cj.joborder_id
-            WHERE 1=1 {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
-            {f"AND j.status = '{job_status}'" if job_status else ""}
+            WHERE 1=1 {f_cj_job} {f_cj_recruiter} {f_cj_status}
+            {date_filter_cj_created.replace('WHERE', 'AND cj.') if date_filter_cj_created else ''}
             GROUP BY j.title
             ORDER BY total DESC
             LIMIT 8
@@ -534,9 +555,13 @@ def get_recruitment_stats(db: Session, days: int = 30, job_status: Optional[str]
         ]
 
         # 7. Velocity Stages
-        res_s = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 400 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
-        res_i = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status = 500 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
-        res_p = db.execute(text(f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {status_filter_cj} WHERE cj.status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}")).fetchone()
+        q_s = f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {cj_where_base} AND cj.status = 400 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}"
+        q_i = f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {cj_where_base} AND cj.status = 500 {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}"
+        q_p = f"SELECT AVG(DATEDIFF(cj.date_modified, cj.date_created)) FROM candidate_joborder cj {cj_where_base} AND cj.status IN (800, 900) {date_filter_cj.replace('WHERE', 'AND cj.') if date_filter_cj else ''}"
+        
+        res_s = db.execute(text(q_s)).fetchone()
+        res_i = db.execute(text(q_i)).fetchone()
+        res_p = db.execute(text(q_p)).fetchone()
 
         stats["velocity_stages"] = [
             {"stage": "Initial Screening", "days": round(res_s[0], 1) if res_s and res_s[0] is not None else 1.0},
