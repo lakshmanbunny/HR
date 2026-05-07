@@ -111,7 +111,7 @@ class OpenCATSService:
         current_date = datetime.now().strftime("%d %B %Y")
         
         prompt = f"""
-        You are an elite AI Recruiter. Today's date is {current_date}. 
+        You are an elite Technical Recruiter. Today's date is {current_date}. 
         Analyze the following resume for a candidate.
         
         CANDIDATE: {first_name} {last_name}
@@ -124,8 +124,19 @@ class OpenCATSService:
         {{
             "risk_analysis": ["bullet points of potential risks, gaps, or concerns"],
             "strengths": ["bullet points of key technical and soft strengths"],
-            "initial_call_questions": ["5 precise questions the HR should ask in the first screening call to verify their background"]
+            "initial_call_questions": [
+                {{
+                    "question": "The question text",
+                    "expected_answer": "A 'Cheat Sheet' for HR. Give 2-3 specific keywords or technical terms the candidate MUST mention. Add one simple 'Check' question the HR can ask to verify. DO NOT use generic phrases like 'should demonstrate understanding'."
+                }}
+            ]
         }}
+        
+        IMPORTANT RULES for questions:
+        1. Generate exactly 10 questions.
+        2. Questions 1-4 MUST be about specific projects mentioned in their resume (e.g., 'In your X project, how did you handle Y?').
+        3. For technical tools like LangGraph, don't just ask 'Describe it'. Ask about a specific implementation detail like 'How did you handle state persistence across nodes?'.
+        4. The 'expected_answer' must be a guide for a NON-TECHNICAL person. Example: 'Good signs: They mention "Checkpointers" or "Recursion limits". Ask them: "Did you use a persistent store for state?"'
         
         Return ONLY the JSON.
         """
@@ -156,8 +167,10 @@ class OpenCATSService:
         Analyzes an uploaded PDF/Docx directly for a candidate.
         """
         # 1. Fetch Candidate Info
-        cand_query = text("SELECT first_name, last_name, key_skills FROM candidate WHERE candidate_id = :id")
-        cand = db.execute(cand_query, {"id": candidate_id}).fetchone()
+        cand = None
+        if candidate_id > 0:
+            cand_query = text("SELECT first_name, last_name, key_skills FROM candidate WHERE candidate_id = :id")
+            cand = db.execute(cand_query, {"id": candidate_id}).fetchone()
         
         # 2. Extract Text from PDF
         text_content = ""
@@ -179,7 +192,7 @@ class OpenCATSService:
         current_date = datetime.now().strftime("%d %B %Y")
         
         prompt = f"""
-        You are an elite AI Recruiter. Today's date is {current_date}.
+        You are an elite Technical Recruiter. Today's date is {current_date}.
         Analyze the following resume for a candidate.
         
         CANDIDATE: {cand[0] if cand else 'Unknown'} {cand[1] if cand else ''}
@@ -191,8 +204,19 @@ class OpenCATSService:
         {{
             "risk_analysis": ["bullet points of potential risks, gaps, or concerns"],
             "strengths": ["bullet points of key technical and soft strengths"],
-            "initial_call_questions": ["5 precise questions the HR should ask in the first screening call"]
+            "initial_call_questions": [
+                {{
+                    "question": "The question text",
+                    "expected_answer": "A 'Cheat Sheet' for HR. Give 2-3 specific keywords or technical terms the candidate MUST mention. Add one simple 'Check' question the HR can ask to verify. DO NOT use generic phrases like 'should demonstrate understanding'."
+                }}
+            ]
         }}
+        
+        IMPORTANT RULES for questions:
+        1. Generate exactly 10 questions.
+        2. Questions 1-4 MUST be about specific projects mentioned in their resume (e.g., 'In your X project, how did you handle Y?').
+        3. For technical tools like LangGraph, don't just ask 'Describe it'. Ask about a specific implementation detail like 'How did you handle state persistence across nodes?'.
+        4. The 'expected_answer' must be a guide for a NON-TECHNICAL person. Example: 'Good signs: They mention "Checkpointers" or "Recursion limits". Ask them: "Did you use a persistent store for state?"'
         
         Return ONLY the JSON.
         """

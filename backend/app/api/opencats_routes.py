@@ -39,3 +39,16 @@ async def analyze_candidate_upload(candidate_id: int, file: UploadFile = File(..
         return analysis
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/analyze-direct")
+async def analyze_direct_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Analyze any uploaded resume file directly without a specific candidate ID.
+    """
+    try:
+        content = await file.read()
+        # We pass 0 as candidate_id to signify a guest analysis
+        analysis = await opencats_service.analyze_candidate_file(db, 0, content, file.filename)
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
