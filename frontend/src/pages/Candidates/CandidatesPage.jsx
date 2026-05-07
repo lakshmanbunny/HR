@@ -9,8 +9,12 @@ const CandidatesPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCandidate, setSelectedCandidate] = useState(null);
     const [analysis, setAnalysis] = useState(null);
+    const [managerAnalysis, setManagerAnalysis] = useState(null);
     const [analyzingId, setAnalyzingId] = useState(null);
     const [isDirectUpload, setIsDirectUpload] = useState(false);
+    const [intelligenceMode, setIntelligenceMode] = useState('recruiter'); // 'recruiter' or 'manager'
+    const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+    const [auditFiles, setAuditFiles] = useState({ resume: null, jd: null });
     
     // Checkbox state for questions
     const [checkedQuestions, setCheckedQuestions] = useState({});
@@ -39,7 +43,10 @@ const CandidatesPage = () => {
         setIsDirectUpload(false);
         setAnalyzingId(candidateId);
         setAnalysis(null);
+        setManagerAnalysis(null);
         setCheckedQuestions({});
+        setIntelligenceMode('recruiter');
+        
         try {
             const response = await fetch(`${API_BASE}/candidates/${candidateId}/analysis`);
             if (response.ok) {
@@ -55,18 +62,43 @@ const CandidatesPage = () => {
         }
     };
 
-    const handleDirectUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    const handleManagerAnalyze = async () => {
+        if (!selectedCandidate) return;
+        setAnalyzingId(selectedCandidate.id);
+        setManagerAnalysis(null);
+        
+        try {
+            const response = await fetch(`${API_BASE}/candidates/${selectedCandidate.id}/managerial-analysis`);
+            if (response.ok) {
+                const data = await response.json();
+                setManagerAnalysis(data);
+                setIntelligenceMode('manager');
+            }
+        } catch (error) {
+            console.error("Managerial analysis failed", error);
+        } finally {
+            setAnalyzingId(null);
+        }
+    };
+
+    const handleDirectUploadSubmit = async () => {
+        if (!auditFiles.resume || !auditFiles.jd) {
+            alert("Please upload both Resume and JD");
+            return;
+        }
 
         setIsDirectUpload(true);
-        setSelectedCandidate({ name: file.name.split('.')[0], id: 'GUEST' });
+        setSelectedCandidate({ name: auditFiles.resume.name.split('.')[0], id: 'GUEST' });
         setAnalyzingId('DIRECT');
         setAnalysis(null);
+        setManagerAnalysis(null);
         setCheckedQuestions({});
+        setIntelligenceMode('recruiter');
+        setIsAuditModalOpen(false);
 
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('resume', auditFiles.resume);
+        formData.append('jd', auditFiles.jd);
 
         try {
             const response = await fetch(`${API_BASE}/analyze-direct`, {
@@ -81,6 +113,7 @@ const CandidatesPage = () => {
             console.error("Direct upload analysis failed", err);
         } finally {
             setAnalyzingId(null);
+            setAuditFiles({ resume: null, jd: null });
         }
     };
 
@@ -92,68 +125,74 @@ const CandidatesPage = () => {
     };
 
     const handleDownloadReport = () => {
-        if (!analysis) return;
+        if (intelligenceMode === 'recruiter' && !analysis) return;
+        if (intelligenceMode === 'manager' && !managerAnalysis) return;
 
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
         
         // Header
-        doc.setFillColor(10, 15, 30); // Primary Dark
+        doc.setFillColor(10, 15, 30);
         doc.rect(0, 0, pageWidth, 40, 'F');
         
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(22);
         doc.setFont('helvetica', 'bold');
-        doc.text("Technical Interview Sheet", 20, 25);
+        doc.text(intelligenceMode === 'recruiter' ? "Technical Interview Sheet" : "Managerial Intelligence Audit", 20, 25);
         
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         doc.text(`Candidate: ${selectedCandidate?.name || 'Unknown'}`, 20, 33);
         doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - 60, 33);
 
-        // Score Summary
-        const successCount = Object.values(checkedQuestions).filter(Boolean).length;
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(12);
-        doc.text(`Candidate Performance Score: ${successCount} / 10`, 20, 55);
-        
-        // Table Data
-        const tableData = analysis.initial_call_questions.map((q, i) => [
-            i + 1,
-            checkedQuestions[i] ? "PASS" : "FAIL/NO",
-            {
-                content: `${typeof q === 'string' ? q : q.question}\n\nHR CHEAT SHEET:\n${q.expected_answer || 'N/A'}`,
-                styles: { fontSize: 9 }
+        if (intelligenceMode === 'recruiter') {
+            const successCount = Object.values(checkedQuestions).filter(Boolean).length;
+            doc.setTextColor(0, 0, 0);
+            doc.text(`Performance Score: ${successCount} / 10`, 20, 55);
+            if (analysis.match_score) {
+                doc.text(`Match Score (vs JD): ${analysis.match_score}%`, pageWidth - 60, 55);
             }
-        ]);
+            
+            const tableData = analysis.initial_call_questions.map((q, i) => [
+                i + 1,
+                checkedQuestions[i] ? "PASS" : "FAIL/NO",
+                {
+                    content: `${typeof q === 'string' ? q : q.question}\n\nHR CHEAT SHEET:\n${q.expected_answer || 'N/A'}`,
+                    styles: { fontSize: 9 }
+                }
+            ]);
 
-        autoTable(doc, {
-            startY: 65,
-            head: [['#', 'Status', 'Question & Verification Guide']],
-            body: tableData,
-            headStyles: { fillColor: [0, 102, 255], textColor: 255, fontStyle: 'bold' },
-            columnStyles: {
-                0: { cellWidth: 10 },
-                1: { cellWidth: 20, fontStyle: 'bold' },
-                2: { cellWidth: 'auto' }
-            },
-            alternateRowStyles: { fillColor: [245, 247, 250] },
-            margin: { top: 60 }
-        });
+            autoTable(doc, {
+                startY: 65,
+                head: [['#', 'Status', 'Question & Verification Guide']],
+                body: tableData,
+                headStyles: { fillColor: [0, 102, 255] },
+                margin: { top: 60 }
+            });
+        } else {
+            // Managerial Report
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(12);
+            doc.text("Executive L1 Summary:", 20, 55);
+            doc.setFontSize(9);
+            const splitSummary = doc.splitTextToSize(managerAnalysis.l1_summary, pageWidth - 40);
+            doc.text(splitSummary, 20, 62);
 
-        // Risk & Strength summary footer
-        const finalY = doc.lastAutoTable.finalY + 20;
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text("AI Profile Risks", 20, finalY);
-        
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        analysis.risk_analysis.slice(0, 3).forEach((risk, i) => {
-            doc.text(`• ${risk}`, 25, finalY + 10 + (i * 6));
-        });
+            let yPos = 62 + (splitSummary.length * 5) + 10;
+            
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text("The Gap (Inconsistencies):", 20, yPos);
+            yPos += 7;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            managerAnalysis.the_gap.forEach(item => {
+                doc.text(`• ${item}`, 25, yPos);
+                yPos += 5;
+            });
+        }
 
-        doc.save(`Interview_Sheet_${selectedCandidate?.name.replace(/\s+/g, '_') || 'Candidate'}.pdf`);
+        doc.save(`${intelligenceMode === 'recruiter' ? 'Recruiter' : 'Manager'}_Audit_${selectedCandidate?.name.replace(/\s+/g, '_')}.pdf`);
     };
 
     const filteredCandidates = candidates.filter(c => 
@@ -163,6 +202,50 @@ const CandidatesPage = () => {
 
     return (
         <div className="flex flex-col gap-8 pb-10">
+            {/* Direct Audit Modal */}
+            {isAuditModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsAuditModalOpen(false)}></div>
+                    <div className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in duration-300">
+                        <div className="bg-[#0A0F1E] p-10 text-white">
+                            <h3 className="text-2xl font-black uppercase tracking-widest">New AI Audit</h3>
+                            <p className="text-sm text-gray-400 mt-2">Upload Resume and JD for comparative screening.</p>
+                        </div>
+                        <div className="p-10 flex flex-col gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">1. Candidate Resume (PDF/DOCX)</label>
+                                <div className={`border-2 border-dashed rounded-2xl p-6 transition-all flex flex-col items-center gap-3 ${auditFiles.resume ? 'border-success bg-success/5' : 'border-gray-200 hover:border-primary-blue'}`}>
+                                    <input type="file" accept=".pdf,.docx" className="hidden" id="resume-up" onChange={(e) => setAuditFiles(prev => ({ ...prev, resume: e.target.files[0] }))} />
+                                    <label htmlFor="resume-up" className="cursor-pointer flex flex-col items-center gap-2">
+                                        <Upload className={auditFiles.resume ? 'text-success' : 'text-text-muted'} size={32} />
+                                        <span className="text-xs font-bold">{auditFiles.resume ? auditFiles.resume.name : 'Select Resume'}</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted">2. Job Description (PDF/DOCX)</label>
+                                <div className={`border-2 border-dashed rounded-2xl p-6 transition-all flex flex-col items-center gap-3 ${auditFiles.jd ? 'border-success bg-success/5' : 'border-gray-200 hover:border-primary-blue'}`}>
+                                    <input type="file" accept=".pdf,.docx" className="hidden" id="jd-up" onChange={(e) => setAuditFiles(prev => ({ ...prev, jd: e.target.files[0] }))} />
+                                    <label htmlFor="jd-up" className="cursor-pointer flex flex-col items-center gap-2">
+                                        <FileText className={auditFiles.jd ? 'text-success' : 'text-text-muted'} size={32} />
+                                        <span className="text-xs font-bold">{auditFiles.jd ? auditFiles.jd.name : 'Select JD'}</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={handleDirectUploadSubmit}
+                                disabled={!auditFiles.resume || !auditFiles.jd}
+                                className="w-full py-4 bg-primary-blue text-white rounded-2xl font-black uppercase tracking-widest hover:bg-primary-dark transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-blue-100 mt-4"
+                            >
+                                Start Comparative Audit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                     <h1 className="text-3xl font-black text-[#0A0F1E] tracking-tight">Candidate Intelligence</h1>
@@ -181,13 +264,13 @@ const CandidatesPage = () => {
                         />
                     </div>
                     
-                    <label className="shrink-0 cursor-pointer group">
-                        <div className="flex items-center gap-2 px-6 py-3.5 bg-primary-blue text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95 shadow-xl shadow-blue-100">
-                            <Upload size={16} />
-                            New AI Audit
-                        </div>
-                        <input type="file" accept=".pdf" className="hidden" onChange={handleDirectUpload} />
-                    </label>
+                    <button 
+                        onClick={() => setIsAuditModalOpen(true)}
+                        className="flex items-center gap-2 px-6 py-3.5 bg-primary-blue text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95 shadow-xl shadow-blue-100"
+                    >
+                        <Upload size={16} />
+                        New AI Audit
+                    </button>
                 </div>
             </div>
 
@@ -268,54 +351,95 @@ const CandidatesPage = () => {
                     ) : (
                         <div className="flex flex-col gap-6 animate-in fade-in zoom-in duration-500">
                             {/* Candidate Header */}
-                            <div className="bg-white p-8 rounded-[2rem] border border-border-subtle shadow-sm flex items-center justify-between">
-                                <div className="flex items-center gap-6">
-                                    <div className="w-16 h-16 bg-primary-blue rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
-                                        {isDirectUpload ? <FileText size={32} /> : <User size={32} />}
-                                    </div>
-                                    <div>
-                                        <h2 className="text-2xl font-black text-[#0A0F1E] truncate max-w-[400px]">{selectedCandidate.name}</h2>
-                                        <div className="flex items-center gap-4 mt-1">
-                                            <span className="text-xs font-bold text-text-muted flex items-center gap-1.5">
-                                                <CheckCircle2 size={14} className="text-success" /> {isDirectUpload ? 'External Upload' : 'OpenCATS Profile'}
-                                            </span>
-                                            <span className="text-xs font-bold text-success-text flex items-center gap-1.5 px-2 py-0.5 bg-success/10 rounded-full">
-                                                <Zap size={10} /> Gemini 2.0 Flash Verified
-                                            </span>
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-border-subtle shadow-sm">
+                                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                                    <div className="flex items-center gap-6">
+                                        <div className="w-16 h-16 bg-primary-blue rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 relative">
+                                            {isDirectUpload ? <FileText size={32} /> : <User size={32} />}
+                                            {analysis?.match_score && (
+                                                <div className="absolute -top-2 -right-2 w-8 h-8 bg-success rounded-full flex items-center justify-center text-[10px] font-black text-white border-2 border-white">
+                                                    {analysis.match_score}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h2 className="text-2xl font-black text-[#0A0F1E] truncate max-w-[400px]">{selectedCandidate.name}</h2>
+                                            <div className="flex items-center gap-4 mt-1">
+                                                <span className="text-xs font-bold text-text-muted flex items-center gap-1.5">
+                                                    <CheckCircle2 size={14} className="text-success" /> {isDirectUpload ? 'Comparative Audit' : 'OpenCATS Profile'}
+                                                </span>
+                                                <span className="text-xs font-bold text-success-text flex items-center gap-1.5 px-2 py-0.5 bg-success/10 rounded-full">
+                                                    <Zap size={10} /> Gemini 2.0 Flash Verified
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
+                                    
+                                    {/* Tab Switcher */}
+                                    <div className="bg-bg-muted p-1.5 rounded-2xl flex items-center self-stretch md:self-auto">
+                                        <button 
+                                            onClick={() => setIntelligenceMode('recruiter')}
+                                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${intelligenceMode === 'recruiter' ? 'bg-white text-primary-blue shadow-sm' : 'text-text-muted hover:text-primary-blue'}`}
+                                        >
+                                            Recruiter View
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if (managerAnalysis) {
+                                                    setIntelligenceMode('manager');
+                                                } else {
+                                                    handleManagerAnalyze();
+                                                }
+                                            }}
+                                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${intelligenceMode === 'manager' ? 'bg-primary-blue text-white shadow-sm' : 'text-text-muted hover:text-primary-blue'}`}
+                                        >
+                                            Manager View
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    {analysis && (
+                                
+                                <div className="mt-8 pt-8 border-t border-border-subtle flex items-center justify-between">
+                                    <div className="flex gap-2">
+                                        {intelligenceMode === 'manager' && !managerAnalysis ? (
+                                            <div className="flex items-center gap-2 text-primary-blue font-bold text-xs animate-pulse">
+                                                <Loader2 className="animate-spin" size={14} /> Fetching L1 Transcript...
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col gap-1">
+                                                <p className="text-xs text-text-muted font-medium italic">
+                                                    {intelligenceMode === 'recruiter' ? "Focused on screening and initial technical verification." : "Cross-referencing resume with L1 interview performance."}
+                                                </p>
+                                                {analysis?.match_score && (
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <div className="h-1 w-32 bg-gray-100 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-success transition-all duration-1000" style={{ width: `${analysis.match_score}%` }}></div>
+                                                        </div>
+                                                        <span className="text-[10px] font-black text-success uppercase tracking-widest">{analysis.match_score}% JD Match</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3">
                                         <button 
                                             onClick={handleDownloadReport}
-                                            className="p-3 bg-primary-blue text-white rounded-xl hover:bg-primary-dark transition-all active:scale-95 flex items-center gap-2 text-xs font-bold uppercase tracking-widest shadow-lg shadow-blue-100"
+                                            className="p-3 bg-white border border-border-subtle text-primary-blue rounded-xl hover:bg-bg-muted transition-all active:scale-95 flex items-center gap-2 text-xs font-bold uppercase tracking-widest shadow-sm"
                                         >
                                             <Download size={18} />
-                                            Download PDF
+                                            Export PDF
                                         </button>
-                                    )}
-                                    <button className="px-6 py-3 bg-primary-dark text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all active:scale-95 shadow-xl shadow-gray-200">
-                                        Schedule Interview
-                                    </button>
+                                        <button className="px-6 py-3 bg-primary-dark text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all active:scale-95 shadow-xl shadow-gray-200">
+                                            Schedule Next Round
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
-                            {analysis?.error ? (
-                                <div className="bg-white p-12 rounded-[2.5rem] border border-dashed border-red-200 flex flex-col items-center text-center gap-8 shadow-xl shadow-red-50 relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-full h-1 bg-red-100"></div>
-                                    <div className="w-20 h-20 bg-red-50 rounded-[2rem] flex items-center justify-center text-red-500">
-                                        <AlertTriangle size={40} />
-                                    </div>
-                                    <div className="max-w-md">
-                                        <h3 className="text-xl font-black text-red-900 uppercase tracking-widest">Analysis Failure</h3>
-                                        <p className="text-sm text-red-700/70 mt-3 font-medium leading-relaxed italic">{analysis.error}</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col gap-6">
+                            {/* View Content */}
+                            {intelligenceMode === 'recruiter' ? (
+                                <div className="flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                                    {/* Standard Recruiter View */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {/* Risks */}
                                         <div className="bg-white p-8 rounded-[2rem] border border-border-subtle shadow-sm flex flex-col gap-6">
                                             <div className="flex items-center gap-3 text-red-600">
                                                 <ShieldAlert size={24} />
@@ -325,13 +449,17 @@ const CandidatesPage = () => {
                                                 {analysis?.risk_analysis?.map((risk, i) => (
                                                     <div key={i} className="flex gap-3 p-4 bg-red-50/50 rounded-2xl border border-red-50">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 shrink-0"></div>
-                                                        <p className="text-sm text-red-900 font-medium leading-relaxed">{risk}</p>
+                                                        <p className="text-sm text-red-900 font-medium">{risk}</p>
+                                                    </div>
+                                                ))}
+                                                {analysis?.missing_skills?.map((skill, i) => (
+                                                    <div key={`miss-${i}`} className="flex gap-3 p-4 bg-orange-50/50 rounded-2xl border border-orange-50">
+                                                        <AlertTriangle size={14} className="text-orange-500 mt-1 shrink-0" />
+                                                        <p className="text-sm text-orange-900 font-medium">Missing: {skill}</p>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
-
-                                        {/* Strengths */}
                                         <div className="bg-white p-8 rounded-[2rem] border border-border-subtle shadow-sm flex flex-col gap-6">
                                             <div className="flex items-center gap-3 text-success-text">
                                                 <CheckCircle2 size={24} />
@@ -341,67 +469,124 @@ const CandidatesPage = () => {
                                                 {analysis?.strengths?.map((strength, i) => (
                                                     <div key={i} className="flex gap-3 p-4 bg-success/5 rounded-2xl border border-success/10">
                                                         <div className="w-1.5 h-1.5 rounded-full bg-success mt-1.5 shrink-0"></div>
-                                                        <p className="text-sm text-success-text font-medium leading-relaxed">{strength}</p>
+                                                        <p className="text-sm text-success-text font-medium">{strength}</p>
                                                     </div>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
-
-                                    {/* Questions Section */}
-                                    <div className="bg-white p-8 rounded-[3rem] border border-border-subtle shadow-sm flex flex-col gap-8">
-                                        <div className="flex items-center justify-between">
+                                    
+                                    {/* Questions Checklist */}
+                                    <div className="bg-white p-8 rounded-[3rem] border border-border-subtle shadow-sm">
+                                        <div className="flex items-center justify-between mb-8">
                                             <div className="flex items-center gap-3 text-primary-blue">
                                                 <MessageSquareQuote size={24} />
-                                                <div>
-                                                    <h3 className="text-sm font-black uppercase tracking-[0.2em]">Technical Interview Verification</h3>
-                                                    <p className="text-[10px] text-text-muted font-bold mt-1 uppercase tracking-widest">10 Project-Specific Questions with HR Guide</p>
-                                                </div>
+                                                <h3 className="text-sm font-black uppercase tracking-[0.2em]">Technical Screening Sheet</h3>
                                             </div>
                                             <div className="px-4 py-2 bg-primary-blue/10 text-primary-blue rounded-full text-[10px] font-black uppercase tracking-widest">
                                                 {Object.values(checkedQuestions).filter(Boolean).length} / 10 Success
                                             </div>
                                         </div>
-
                                         <div className="grid grid-cols-1 gap-4">
                                             {analysis?.initial_call_questions?.map((q, i) => (
                                                 <div 
                                                     key={i} 
                                                     onClick={() => toggleQuestion(i)}
-                                                    className={`flex gap-6 p-6 rounded-[2rem] border transition-all cursor-pointer group ${checkedQuestions[i] ? 'bg-success/5 border-success/30 shadow-lg shadow-success/5' : 'bg-bg-muted/50 border-gray-100 hover:border-primary-blue/30'}`}
+                                                    className={`flex gap-6 p-6 rounded-[2rem] border transition-all cursor-pointer group ${checkedQuestions[i] ? 'bg-success/5 border-success/30' : 'bg-bg-muted/50 border-gray-100'}`}
                                                 >
-                                                    <div className="shrink-0 pt-1">
-                                                        {checkedQuestions[i] ? (
-                                                            <CheckSquare className="text-success animate-in zoom-in duration-300" size={24} />
-                                                        ) : (
-                                                            <Square className="text-gray-300 group-hover:text-primary-blue" size={24} />
-                                                        )}
-                                                    </div>
-                                                    
+                                                    <div className="shrink-0 pt-1">{checkedQuestions[i] ? <CheckSquare className="text-success" size={24} /> : <Square className="text-gray-300" size={24} />}</div>
                                                     <div className="flex-1 space-y-4">
-                                                        <p className="text-sm text-primary-dark font-black leading-relaxed">
-                                                            {typeof q === 'string' ? q : q.question}
-                                                        </p>
-                                                        
-                                                        {q.expected_answer && (
-                                                            <div className="bg-white/60 p-5 rounded-[1.5rem] border border-dashed border-primary-blue/20">
-                                                                <span className="text-[10px] font-black text-primary-blue uppercase tracking-widest block mb-2 flex items-center gap-2">
-                                                                    <Zap size={12} /> HR CHEAT SHEET (VERIFICATION GUIDE)
-                                                                </span>
-                                                                <p className="text-xs text-text-muted font-medium italic leading-relaxed">
-                                                                    {q.expected_answer}
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="shrink-0 text-2xl font-black text-gray-100 group-hover:text-primary-blue/10 transition-colors">
-                                                        {String(i + 1).padStart(2, '0')}
+                                                        <p className="text-sm text-primary-dark font-black leading-relaxed">{q.question}</p>
+                                                        <div className="bg-white/60 p-5 rounded-[1.5rem] border border-dashed border-primary-blue/20">
+                                                            <span className="text-[10px] font-black text-primary-blue uppercase tracking-widest block mb-2">HR Cheat Sheet</span>
+                                                            <p className="text-xs text-text-muted italic">{q.expected_answer}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                                    {managerAnalysis ? (
+                                        <>
+                                            {/* Managerial Analysis Display */}
+                                            <div className="bg-[#0A0F1E] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
+                                                <div className="absolute top-0 right-0 p-10 opacity-10">
+                                                    <Zap size={120} />
+                                                </div>
+                                                <div className="relative z-10 max-w-3xl">
+                                                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-primary-blue mb-4">Executive L1 Audit</h3>
+                                                    <h4 className="text-2xl font-bold leading-relaxed mb-6">{managerAnalysis.l1_summary}</h4>
+                                                    <div className="flex gap-4">
+                                                        <div className="px-4 py-2 bg-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                                                            Transcript Analyzed
+                                                        </div>
+                                                        <div className="px-4 py-2 bg-primary-blue/20 text-primary-blue rounded-xl text-[10px] font-black uppercase tracking-widest">
+                                                            Resume Cross-Referenced
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                {/* The Gap */}
+                                                <div className="md:col-span-2 bg-white p-8 rounded-[2.5rem] border border-border-subtle shadow-sm">
+                                                    <div className="flex items-center gap-3 text-orange-600 mb-6">
+                                                        <AlertTriangle size={24} />
+                                                        <h3 className="text-sm font-black uppercase tracking-[0.2em]">The Gap (Resume vs Interview)</h3>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        {managerAnalysis.the_gap.map((item, i) => (
+                                                            <div key={i} className="p-5 bg-orange-50/50 rounded-2xl border border-orange-100 flex gap-4">
+                                                                <div className="w-2 h-2 rounded-full bg-orange-400 mt-1.5 shrink-0"></div>
+                                                                <p className="text-sm text-orange-900 font-medium">{item}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Pain Points */}
+                                                <div className="bg-white p-8 rounded-[2.5rem] border border-border-subtle shadow-sm">
+                                                    <div className="flex items-center gap-3 text-red-600 mb-6">
+                                                        <Zap size={24} />
+                                                        <h3 className="text-sm font-black uppercase tracking-[0.2em]">Pain Points</h3>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        {managerAnalysis.pain_points.map((item, i) => (
+                                                            <div key={i} className="flex gap-3 text-red-900">
+                                                                <AlertTriangle size={14} className="shrink-0 mt-1 opacity-50" />
+                                                                <p className="text-sm font-bold italic">{item}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Managerial Strategy */}
+                                            <div className="bg-white p-10 rounded-[3rem] border border-border-subtle shadow-sm">
+                                                <h3 className="text-sm font-black uppercase tracking-[0.2em] mb-8 text-primary-blue">Recommended Drill-Down Strategy (L2)</h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    {managerAnalysis.manager_strategy.map((item, i) => (
+                                                        <div key={i} className="p-8 bg-bg-muted/50 rounded-[2rem] border border-gray-100 hover:border-primary-blue/30 transition-all group">
+                                                            <div className="text-[10px] font-black text-text-muted uppercase tracking-widest mb-2 group-hover:text-primary-blue transition-colors">{item.topic}</div>
+                                                            <p className="text-base font-black text-primary-dark mb-4 leading-relaxed underline decoration-primary-blue/30 underline-offset-4">{item.drill_down_question}</p>
+                                                            <div className="flex gap-3 items-start">
+                                                                <div className="w-1 h-1 bg-primary-blue mt-1.5 rounded-full shrink-0"></div>
+                                                                <p className="text-xs text-text-muted font-medium italic">{item.why}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="p-20 text-center flex flex-col items-center gap-4">
+                                            <Loader2 className="animate-spin text-primary-blue" size={40} />
+                                            <p className="text-sm font-bold text-text-muted uppercase tracking-widest">Cross-Referencing Intelligence...</p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

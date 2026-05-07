@@ -28,6 +28,17 @@ async def analyze_opencats_candidate(candidate_id: int, db: Session = Depends(ge
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/candidates/{candidate_id}/managerial-analysis")
+async def analyze_managerial_candidate(candidate_id: int, db: Session = Depends(get_db)):
+    """
+    Trigger Managerial AI analysis (Resume + Transcript) for a specific candidate.
+    """
+    try:
+        analysis = await opencats_service.analyze_managerial_candidate(db, candidate_id)
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/candidates/{candidate_id}/analyze-upload")
 async def analyze_candidate_upload(candidate_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
@@ -41,14 +52,25 @@ async def analyze_candidate_upload(candidate_id: int, file: UploadFile = File(..
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/analyze-direct")
-async def analyze_direct_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def analyze_direct_upload(
+    resume: UploadFile = File(...), 
+    jd: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
     """
-    Analyze any uploaded resume file directly without a specific candidate ID.
+    Analyze an uploaded resume against an uploaded JD directly.
     """
     try:
-        content = await file.read()
-        # We pass 0 as candidate_id to signify a guest analysis
-        analysis = await opencats_service.analyze_candidate_file(db, 0, content, file.filename)
+        resume_content = await resume.read()
+        jd_content = await jd.read()
+        
+        analysis = await opencats_service.analyze_candidate_vs_jd(
+            db, 
+            resume_content, 
+            resume.filename,
+            jd_content,
+            jd.filename
+        )
         return analysis
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
