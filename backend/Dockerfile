@@ -1,22 +1,15 @@
-# Use NVIDIA CUDA runtime as base image for GPU support
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+# Use a lightweight Python base image
+FROM python:3.10-slim
 
 # Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
+ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Install Python and other dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    python3.10 \
-    python3-pip \
-    python3.10-dev \
     build-essential \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# Set python3.10 as the default python
-RUN ln -s /usr/bin/python3.10 /usr/bin/python
 
 # Create and set working directory
 WORKDIR /app
