@@ -165,7 +165,8 @@ class OpenCATSService:
 
     async def analyze_managerial_candidate(self, db: Session, candidate_id: int) -> Dict[str, Any]:
         """
-        Analyzes both resume and transcript for managerial intelligence.
+        Analyzes resume, transcript, and feedback for managerial intelligence.
+        Now includes Written Test scores and document download links.
         """
         # 1. Fetch Candidate Info
         cand_query = text("SELECT first_name, last_name, key_skills FROM candidate WHERE candidate_id = :id")
@@ -175,7 +176,12 @@ class OpenCATSService:
         
         first_name, last_name, _ = cand
 
-        # 2. Fetch All Attachments
+        # 2. Fetch Extra Fields (Written Test Score)
+        score_query = text("SELECT value FROM extra_field WHERE data_item_id = :id AND field_name LIKE '%Written Test Score%'")
+        score_row = db.execute(score_query, {"id": candidate_id}).fetchone()
+        written_test_score = score_row[0] if score_row else None
+
+        # 3. Fetch All Attachments
         att_query = text("""
             SELECT attachment_id, original_filename, directory_name, resume
             FROM attachment 
@@ -186,45 +192,67 @@ class OpenCATSService:
         
         resume_text = ""
         transcript_text = ""
+        feedback_text = ""
         
+        transcript_id = None
+        written_test_id = None
+        feedback_id = None
+
         base_url = "http://172.16.1.40/paradigmitindia"
 
         async with httpx.AsyncClient() as client:
             for att_id, orig_filename, dir_name, is_resume in attachments:
-                # Decide if it's a resume or transcript
-                is_transcript = any(word in orig_filename.lower() for word in ["interview", "transcript", "l1", "ic", "screening"])
+                fname = orig_filename.lower()
                 
-                if (is_resume == 1 or not resume_text) and not is_transcript:
-                    # Treat as resume
+                # Logic to categorize attachments
+                is_transcript = any(word in fname for word in ["interview", "transcript", "l1", "ic", "screening"]) and "evaluation" not in fname and "form" not in fname
+                is_written_test = any(word in fname for word in ["wt", "written", "test"])
+                is_feedback = any(word in fname for word in ["evaluation", "form", "feedback", "feedback"])
+
+                if (is_resume == 1 or not resume_text) and not is_transcript and not is_written_test and not is_feedback:
                     if not resume_text:
                         resume_text = await self._download_and_extract(client, base_url, att_id, dir_name, orig_filename)
+                
                 elif is_transcript:
-                    # Treat as transcript
+                    transcript_id = att_id
                     if not transcript_text:
                         transcript_text = await self._download_and_extract(client, base_url, att_id, dir_name, orig_filename)
+                
+                elif is_written_test:
+                    written_test_id = att_id
+                
+                elif is_feedback:
+                    feedback_id = att_id
+                    if not feedback_text:
+                        feedback_text = await self._download_and_extract(client, base_url, att_id, dir_name, orig_filename)
 
         if not resume_text and not transcript_text:
             return {"error": "No resume or transcript found for analysis"}
 
-        # 3. Prompt Gemini for Managerial Intelligence
+        # 4. Prompt Gemini for Managerial Intelligence
         prompt = f"""
-        You are a Senior Hiring Manager. Analyze the following Resume and Interview Transcript for a candidate.
+        You are a Senior Hiring Manager. Analyze the following Resume, Interview Transcript, and L1 Feedback for a candidate.
         Perform a cross-reference audit to help the Technical Manager prepare for the next round.
         
         CANDIDATE: {first_name} {last_name}
+        WRITTEN TEST SCORE: {written_test_score if written_test_score else "N/A"}
         
         RESUME CONTENT:
-        {resume_text[:6000]}
+        {resume_text[:5000]}
         
         INTERVIEW TRANSCRIPT (L1/Screening):
-        {transcript_text[:8000] if transcript_text else "No transcript available - focus on resume and identify what's missing."}
+        {transcript_text[:6000] if transcript_text else "No transcript available."}
+        
+        L1 FEEDBACK/EVALUATION:
+        {feedback_text[:4000] if feedback_text else "No specific feedback form text available."}
         
         Provide analysis in JSON format:
         {{
-            "l1_summary": "Short executive summary of the L1 performance",
-            "the_gap": ["List of inconsistencies between resume claims and interview answers"],
+            "l1_summary": "Short executive summary of the L1 performance and feedback",
+            "written_test_analysis": "Comment on their written test score of {written_test_score if written_test_score else 'N/A'}",
+            "the_gap": ["List of inconsistencies between resume claims and interview/test performance"],
             "pain_points": ["Specific technical areas where the candidate struggled or was vague"],
-            "strengths": ["Strongest areas confirmed by the interview"],
+            "strengths": ["Strongest areas confirmed by the interview/test"],
             "manager_strategy": [
                 {{
                     "topic": "Topic Name",
@@ -234,10 +262,10 @@ class OpenCATSService:
             ]
         }}
         
-        IMPORTANT: Be critical and direct. If a candidate claimed 5 years of X but couldn't answer basic X questions in the transcript, highlight it as a major risk.
+        IMPORTANT: Be critical and direct. If the written test score is low or feedback mentioned 'poor communication', highlight it.
         """
         
-        logger.info(f"Generating Managerial Intelligence for {first_name} {last_name}")
+        logger.info(f"Generating Deep Managerial Intelligence for {first_name} {last_name}")
         response = self.llm_service.llm.invoke(prompt)
         content = response.content
         
@@ -249,8 +277,29 @@ class OpenCATSService:
         try:
             analysis = json.loads(content)
             analysis["candidate_name"] = f"{first_name} {last_name}"
+            analysis["written_test_score"] = written_test_score
+            analysis["transcript_id"] = transcript_id
+            analysis["written_test_id"] = written_test_id
+            analysis["feedback_id"] = feedback_id
+            
+            # Helper for download URLs
+            def get_dl_url(aid):
+                if not aid: return None
+                # Fetch directory name for hash
+                dquery = text("SELECT directory_name FROM attachment WHERE attachment_id = :aid")
+                drow = db.execute(dquery, {"aid": aid}).fetchone()
+                if drow:
+                    dhash = hashlib.md5(drow[0].encode()).hexdigest()
+                    return f"{base_url}/index.php?m=attachments&a=getAttachment&id={aid}&directoryNameHash={dhash}"
+                return None
+
+            analysis["transcript_url"] = get_dl_url(transcript_id)
+            analysis["written_test_url"] = get_dl_url(written_test_id)
+            analysis["feedback_url"] = get_dl_url(feedback_id)
+
             return analysis
         except Exception as e:
+            logger.error(f"Failed to parse Managerial analysis: {e}")
             return {"error": "Failed to parse Managerial analysis", "raw_content": content}
 
     async def _download_and_extract(self, client, base_url, att_id, dir_name, filename) -> str:

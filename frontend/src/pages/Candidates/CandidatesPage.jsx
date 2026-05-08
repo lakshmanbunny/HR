@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, User, FileText, AlertTriangle, CheckCircle2, ShieldAlert, Zap, Loader2, ChevronRight, MessageSquareQuote, Upload, Download, CheckSquare, Square } from 'lucide-react';
+import { Search, User, FileText, AlertTriangle, CheckCircle2, ShieldAlert, Zap, Loader2, ChevronRight, MessageSquareQuote, Upload, Download, CheckSquare, Square, Trophy, FileCheck } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -512,6 +512,89 @@ const CandidatesPage = () => {
                                     {managerAnalysis ? (
                                         <>
                                             {/* Managerial Analysis Display */}
+                                            {/* Scores & Assessments Section */}
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div className="bg-white p-8 rounded-[2.5rem] border border-border-subtle shadow-sm flex flex-col justify-between">
+                                                    <div className="flex items-center gap-3 text-primary-blue mb-4">
+                                                        <Trophy size={24} />
+                                                        <h3 className="text-sm font-black uppercase tracking-[0.2em]">Written Test Score</h3>
+                                                    </div>
+                                                    <div className="flex items-baseline gap-2">
+                                                        <span className="text-6xl font-black text-primary-dark">{managerAnalysis.written_test_score || 'N/A'}</span>
+                                                        <span className="text-xs font-bold text-text-muted uppercase tracking-widest">Verified Result</span>
+                                                    </div>
+                                                    <p className="text-xs text-text-muted mt-4 font-medium italic">{managerAnalysis.written_test_analysis}</p>
+                                                </div>
+
+                                                <div className="md:col-span-2 bg-white p-8 rounded-[2.5rem] border border-border-subtle shadow-sm flex flex-col">
+                                                    <div className="flex items-center gap-3 text-primary-blue mb-6">
+                                                        <FileCheck size={24} />
+                                                        <h3 className="text-sm font-black uppercase tracking-[0.2em]">Assessment Documents</h3>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                                                        {managerAnalysis.written_test_url && (
+                                                            <a 
+                                                                href={managerAnalysis.written_test_url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center justify-between p-5 bg-bg-muted rounded-2xl hover:bg-primary-blue/5 border border-transparent hover:border-primary-blue/20 transition-all group"
+                                                            >
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                                                        <FileText size={20} className="text-primary-blue" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-xs font-black text-primary-dark uppercase tracking-wider">Written Test</p>
+                                                                        <p className="text-[10px] text-text-muted font-medium">Download PDF</p>
+                                                                    </div>
+                                                                </div>
+                                                                <Download size={18} className="text-text-muted group-hover:text-primary-blue" />
+                                                            </a>
+                                                        )}
+
+                                                        {managerAnalysis.transcript_url && (
+                                                            <a 
+                                                                href={managerAnalysis.transcript_url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center justify-between p-5 bg-bg-muted rounded-2xl hover:bg-primary-blue/5 border border-transparent hover:border-primary-blue/20 transition-all group"
+                                                            >
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                                                        <MessageSquareQuote size={20} className="text-primary-blue" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-xs font-black text-primary-dark uppercase tracking-wider">L1 Transcript</p>
+                                                                        <p className="text-[10px] text-text-muted font-medium">View Conversation</p>
+                                                                    </div>
+                                                                </div>
+                                                                <Download size={18} className="text-text-muted group-hover:text-primary-blue" />
+                                                            </a>
+                                                        )}
+                                                        
+                                                        {managerAnalysis.feedback_url && (
+                                                            <a 
+                                                                href={managerAnalysis.feedback_url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center justify-between p-5 bg-bg-muted rounded-2xl hover:bg-primary-blue/5 border border-transparent hover:border-primary-blue/20 transition-all group"
+                                                            >
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                                                        <CheckCircle2 size={20} className="text-success" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-xs font-black text-primary-dark uppercase tracking-wider">L1 Feedback</p>
+                                                                        <p className="text-[10px] text-text-muted font-medium">Evaluation Form</p>
+                                                                    </div>
+                                                                </div>
+                                                                <Download size={18} className="text-text-muted group-hover:text-primary-blue" />
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             <div className="bg-[#0A0F1E] text-white p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
                                                 <div className="absolute top-0 right-0 p-10 opacity-10">
                                                     <Zap size={120} />
@@ -526,6 +609,11 @@ const CandidatesPage = () => {
                                                         <div className="px-4 py-2 bg-primary-blue/20 text-primary-blue rounded-xl text-[10px] font-black uppercase tracking-widest">
                                                             Resume Cross-Referenced
                                                         </div>
+                                                        {managerAnalysis.written_test_score && (
+                                                            <div className="px-4 py-2 bg-success/20 text-success rounded-xl text-[10px] font-black uppercase tracking-widest">
+                                                                Written Test Verified
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
